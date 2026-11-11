@@ -25,6 +25,8 @@ struct GoSettings {
 
   // --- Device behavior ---
   OperatingMode operating_mode = OperatingMode::Portable;
+  // Switch Portable -> Stationary on USB power and back on unplug.
+  bool auto_mode_on_usb = false;
   int auto_lock_seconds = 10; // 0 = auto-lock disabled
 
   // --- LED settings ---

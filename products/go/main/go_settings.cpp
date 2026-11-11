@@ -49,6 +49,7 @@ constexpr const char *KEY_BACK_LED_BRIGHTNESS = "blb";
 constexpr const char *KEY_BACK_LED_INDICATOR = "bli";
 constexpr const char *KEY_TOUCH_LED_INTENSITY = "tlb";
 constexpr const char *KEY_BUZZER_ENABLED = "bv";
+constexpr const char *KEY_AUTO_MODE_ON_USB = "aum";
 // Static IP — 5 uint32s persisted as ints. ip == 0 means DHCP.
 constexpr const char *KEY_STATIC_IP = "sip";
 constexpr const char *KEY_STATIC_NETMASK = "snm";
@@ -306,6 +307,11 @@ GoSettings load_go_settings(ConfigStore &store) {
     settings.buzzer_enabled = buzzer_enabled;
   }
 
+  bool auto_mode_on_usb = false;
+  if (store.get_bool(KEY_AUTO_MODE_ON_USB, auto_mode_on_usb) == ConfigStoreResult::OK) {
+    settings.auto_mode_on_usb = auto_mode_on_usb;
+  }
+
   bool local_server_enabled = true;
   if (store.get_bool(KEY_LOCAL_SERVER_ENABLED, local_server_enabled) == ConfigStoreResult::OK) {
     settings.local_server_enabled = local_server_enabled;
@@ -348,6 +354,7 @@ bool GoSettings::equals(const GoSettings &other) const {
          use_fahrenheit == other.use_fahrenheit && use_feet == other.use_feet &&
          pm_use_usaqi == other.pm_use_usaqi && pinned_chart == other.pinned_chart &&
          gps_mode == other.gps_mode && operating_mode == other.operating_mode &&
+         auto_mode_on_usb == other.auto_mode_on_usb &&
          auto_lock_seconds == other.auto_lock_seconds &&
          back_led_brightness == other.back_led_brightness &&
          back_led_indicator == other.back_led_indicator &&
@@ -502,6 +509,9 @@ bool save_go_settings(ConfigStore &store, const GoSettings &settings) {
   if (store.set_bool(KEY_BUZZER_ENABLED, settings.buzzer_enabled) != ConfigStoreResult::OK) {
     return false;
   }
+  if (store.set_bool(KEY_AUTO_MODE_ON_USB, settings.auto_mode_on_usb) != ConfigStoreResult::OK) {
+    return false;
+  }
   if (store.set_bool(KEY_LOCAL_SERVER_ENABLED, settings.local_server_enabled) !=
       ConfigStoreResult::OK) {
     return false;
@@ -622,13 +632,14 @@ bool clear_factory_settings(ConfigStore &store) {
 void print_settings(const GoSettings &settings) {
   AG_LOGI(TAG,
           "** settings | meas_int=%d | energy_saving_meas_int=%d | gps_mode=%d "
-          "op_mode=%d | auto_lock=%d | pinned_chart=%d | fahrenheit=%s feet=%s usaqi=%s | "
+          "op_mode=%d auto_mode_usb=%s | auto_lock=%d | pinned_chart=%d | fahrenheit=%s feet=%s usaqi=%s | "
           "led: back=%d indicator=%d touch=%d | buzzer=%s | "
           "local_server=%s disable_cloud=%s config_control=%d co2_abc_days=%d "
           "tvoc_learning_offset=%d nox_learning_offset=%d static_ip=%s "
           "onboarding_done=%s **",
           settings.measure_interval_seconds, settings.energy_saving_measure_interval_seconds,
-          settings.gps_mode, settings.operating_mode, settings.auto_lock_seconds,
+          settings.gps_mode, settings.operating_mode, settings.auto_mode_on_usb ? "on" : "off",
+          settings.auto_lock_seconds,
           static_cast<int>(settings.pinned_chart), settings.use_fahrenheit ? "true" : "false",
           settings.use_feet ? "true" : "false", settings.pm_use_usaqi ? "true" : "false",
           static_cast<int>(settings.back_led_brightness),

@@ -572,6 +572,40 @@ A WiFi OTA check can never be in flight at the moment of leaving Stationary —
 the leave handler only runs when the loop is not blocked. See
 [Firmware Update (OTA)](#firmware-update-ota).
 
+### USB Auto Mode
+
+When `GoSettings::auto_mode_on_usb` is on, plugging in USB switches Portable to
+Stationary and unplugging switches back. `update_usb_auto_mode()` runs after
+every charger status poll (`BMS_STATUS_POLL_INTERVAL_MS`, 5 s) and applies the
+decision from `UsbAutoMode` (`go_usb_auto_mode.h`):
+
+- A power change must hold for two consecutive polls, so a brief rail drop on
+  unplug does not flip the mode. Booting on USB, or turning the setting on while
+  plugged in, counts as a plug-in.
+- The switch to Stationary waits while a route is tracked or paused, a BLE
+  client is connected, no Wi-Fi network is saved, onboarding is incomplete, or
+  a setup session, boot splash, peripheral test, or manufacturing flow is
+  active. It fires once those clear if USB is still present.
+- Only Portable switches automatically. Unplugging returns to Portable only
+  when the automatic switch entered Stationary; a Stationary chosen by the user
+  stays.
+- Any other mode change (device menu, BLE, local API, or cloud) hands control
+  back to the user until the next plug-in.
+
+The automatic mode change is not persisted. While it is active,
+`activate_settings_candidate()` saves `Portable` as the stored mode, so other
+settings changes cannot persist the automatic Stationary. A reboot on USB repeats
+the switch; a reboot on battery stays Portable.
+
+If the saved network cannot be reached during an automatic Stationary bring-up,
+the disconnect policy returns to Portable instead of opening provisioning, and
+does not retry until the next plug-in.
+
+Automatic returns to Portable during the Stationary setup session (for example
+an unplug while "Connecting to saved Wi-Fi..." is shown) go through
+`leave_session_to_portable()`, so the session closes and Home is restored.
+Entering Stationary silently unlocks the device, as any Stationary entry does.
+
 ### apply_settings_change()
 
 Called when the UI signals a setting was changed. Calls

@@ -34,6 +34,7 @@
 #include "go_ui.h"
 #include "go_board_capabilities.h"
 #include "go_ulp.h"
+#include "go_usb_auto_mode.h"
 #include "gps/gps_service.h"
 #include "rtos.h"
 #include "serial_command/serial_command.h"
@@ -191,6 +192,13 @@ private:
   /// clears test state while retaining active measurement corrections.
   bool _manufacturing_mode = false;
 
+  /// USB auto-mode decisions (GoSettings::auto_mode_on_usb). While it reports
+  /// auto_active(), Stationary is not persisted: saves keep Portable.
+  UsbAutoMode _usb_auto_mode;
+  /// Set while applying a USB auto-mode switch so it is not mistaken for a
+  /// manual mode change.
+  bool _applying_usb_auto_mode = false;
+
   // --- Peripheral (hardware) test flow ---
   struct PeripheralTestState {
     bool active = false;
@@ -338,6 +346,8 @@ private:
   void check_timers();
   void on_bms_timer();
   void on_bms_status_timer();
+  void update_usb_auto_mode();
+  void apply_usb_auto_mode(OperatingMode target);
   void on_inactivity_timeout();
   void reschedule_sensor_timer(const GoSettings &previous_settings);
 

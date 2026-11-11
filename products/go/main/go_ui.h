@@ -331,6 +331,7 @@ private:
     BackLedIndicator,
     TouchLed,
     Buzzer,
+    UsbAutoMode,
     LocalServer,
     PlayMelody,
     Co2Calibration,
@@ -395,6 +396,7 @@ private:
   uint8_t _setting_back_led_indicator = 0;  // 0="AQI"
   uint8_t _setting_touch_led = 0;           // 0="Off"
   uint8_t _setting_buzzer_volume = 0;       // 0="Off"
+  uint8_t _setting_usb_auto_mode = 0;       // 0="Off", 1="On"
   uint8_t _setting_local_server = 1;        // 0="Disable", 1="Enable"
   uint8_t _setting_melody = 0;              // 0="Off"
 

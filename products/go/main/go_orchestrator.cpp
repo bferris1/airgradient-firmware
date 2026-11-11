@@ -707,6 +707,50 @@ void Orchestrator::on_bms_status_timer() {
   }
 
   _last_bms_status_poll_ms = static_cast<uint32_t>(RTOS::get_time_ms());
+  update_usb_auto_mode();
+}
+
+void Orchestrator::update_usb_auto_mode() {
+  UsbAutoModeInputs in{};
+  in.enabled = _settings.auto_mode_on_usb;
+  in.external_power =
+      bms_power_source_has_external_input(_latest_power.charger_status.power_source);
+  in.mode = _mode;
+  in.tracking_active = tracking_session_active(_tracking_state);
+  in.has_saved_networks = _svc.wifi.has_saved_networks();
+  // Hold the switch while another flow owns the device or a phone is connected.
+  in.can_switch = _settings.onboarding_done && !_setup_session_active && !_manufacturing_mode &&
+                  !_boot_splash_active && !_periph.active && !_svc.ble_service.is_connected();
+
+  const UsbAutoModeAction action = _usb_auto_mode.update(in);
+  if (action == UsbAutoModeAction::None) {
+    return;
+  }
+  const OperatingMode target = action == UsbAutoModeAction::EnterStationary
+                                   ? OperatingMode::Stationary
+                                   : OperatingMode::Portable;
+  AG_LOGI(TAG, "usb auto mode: %s -> %s", action == UsbAutoModeAction::EnterStationary
+                                              ? "USB power"
+                                              : "battery",
+          target == OperatingMode::Stationary ? "Stationary" : "Portable");
+  apply_usb_auto_mode(target);
+  if (action == UsbAutoModeAction::EnterStationary && _mode != OperatingMode::Stationary) {
+    _usb_auto_mode.on_enter_failed();
+  }
+}
+
+void Orchestrator::apply_usb_auto_mode(OperatingMode target) {
+  _applying_usb_auto_mode = true;
+  if (target == OperatingMode::Portable && _setup_session_active) {
+    // Leaving during Stationary bring-up must also close the setup session,
+    // or the Info screen and session gate would outlive Stationary.
+    leave_session_to_portable();
+  } else {
+    // Not persisted: the saved mode stays Portable, so a reboot on USB
+    // repeats the switch and a reboot on battery stays Portable.
+    change_mode(target, /*persist=*/false);
+  }
+  _applying_usb_auto_mode = false;
 }
 
 void Orchestrator::on_inactivity_timeout() {
@@ -2196,8 +2240,17 @@ bool Orchestrator::activate_settings_candidate(const GoSettings &candidate, bool
   if (!settings_changed && candidate.operating_mode == previous_mode && !force_persist) {
     return true;
   }
+  const bool mode_changing = candidate.operating_mode != previous_mode;
+  if (mode_changing && !_applying_usb_auto_mode) {
+    _usb_auto_mode.on_manual_mode_change();
+  }
+  // An automatic Stationary is never saved; the stored mode stays Portable.
+  GoSettings to_save = candidate;
+  if (_usb_auto_mode.auto_active() && to_save.operating_mode == OperatingMode::Stationary) {
+    to_save.operating_mode = OperatingMode::Portable;
+  }
   if (persist && (settings_changed || force_persist) &&
-      !save_go_settings(_config_store, candidate)) {
+      !save_go_settings(_config_store, to_save)) {
     return false;
   }
 
@@ -3033,6 +3086,15 @@ void Orchestrator::on_wifi_disconnected(WifiDisconnectReason reason) {
   case WifiDisconnectReason::unknown:
   case WifiDisconnectReason::requested_by_user:
     break;
+  }
+  if (open_provisioning && _usb_auto_mode.auto_active()) {
+    // An automatic switch must not strand the user on the provisioning page
+    // (e.g. charging away from the saved network): go back to Portable.
+    AG_LOGW(TAG, "usb auto mode: Wi-Fi unavailable (%s); returning to Portable",
+            wifi_disconnect_reason_to_string(reason));
+    _usb_auto_mode.on_stationary_unavailable();
+    apply_usb_auto_mode(OperatingMode::Portable);
+    return;
   }
 
   if (open_provisioning) {

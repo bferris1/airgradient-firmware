@@ -148,11 +148,12 @@ TEST_CASE("UIManager: agreed menu hierarchy", "[UIManager][nav][redesign]") {
                   "Setup Guide", "About Device"});
   open_row(ui, "Operations");
   auto values = ui.build_values(make_default_ctx());
-  REQUIRE(values.row_count == 6);
+  REQUIRE(values.row_count == 7);
   CHECK(std::string(values.rows[2].text).rfind("Measure Int.: ", 0) == 0);
   CHECK(std::string(values.rows[3].text) == "CO2 Calibration");
   CHECK(std::string(values.rows[4].text) == "GPS: When tracking");
   CHECK(std::string(values.rows[5].text) == "Buzzer: Off");
+  CHECK(std::string(values.rows[6].text) == "USB Auto Mode: Off");
   double_press(ui);
   open_row(ui, "Display & Touch");
   check_rows(ui, {"Exit", "Back", "Pinned Chart", "Temperature Unit: C", "Altitude Unit: m",
@@ -293,6 +294,7 @@ TEST_CASE("UIManager: group choice returns and exit gestures", "[UIManager][nav]
       {"Operations", "Measure Int.", "10s", Screen::Operations},
       {"Operations", "GPS:", "Always On", Screen::Operations},
       {"Operations", "Buzzer:", "On", Screen::Operations},
+      {"Operations", "USB Auto Mode:", "On", Screen::Operations},
       {"Display & Touch", "PM Display:", "USAQI", Screen::DisplayTouch},
       {"Display & Touch", "Auto Lock:", "60 Seconds", Screen::DisplayTouch},
       {"Operations", "Local Server", "Disable", Screen::Operations},
@@ -497,7 +499,7 @@ TEST_CASE("UIManager: grouped menus wrap and return to their parent",
   };
   const MenuCase cases[] = {
       {nullptr, Screen::Settings, "Operations", "About Device", 8},
-      {"Operations", Screen::Operations, "Measure Int.", "Buzzer: Off", 6},
+      {"Operations", Screen::Operations, "Measure Int.", "USB Auto Mode: Off", 7},
       {"Display & Touch", Screen::DisplayTouch, "Pinned Chart", "Touch LED: Off", 10},
       {"Hardware Test", Screen::HardwareTest, "Peripheral Test", "Play Melody", 7},
   };
@@ -3090,7 +3092,7 @@ TEST_CASE("UIManager: Local Server is only visible in Stationary and retains its
   ui.sync_settings(settings);
   go_to_group(ui, "Operations");
   check_rows(ui, {"Exit", "Back", "Measure Int.: 10s", "CO2 Calibration", "GPS: When tracking",
-                  "Buzzer: Off", "Local Server"});
+                  "Buzzer: Off", "USB Auto Mode: Off", "Local Server"});
   open_row(ui, "Local Server");
   check_rows(ui, {"Exit", "Back", "Disable", "Enable"});
   CHECK(ui.build_values(make_default_ctx()).selected_row == 3);
@@ -3102,7 +3104,7 @@ TEST_CASE("UIManager: Local Server is only visible in Stationary and retains its
     settings.operating_mode = mode;
     ui.sync_settings(settings);
     auto values = ui.build_values(make_default_ctx());
-    REQUIRE(values.row_count == 6);
+    REQUIRE(values.row_count == 7);
     CHECK(values.selected_row < values.row_count);
     for (uint8_t row = 0; row < values.row_count; ++row)
       CHECK(std::string(values.rows[row].text) != "Local Server");
@@ -3123,7 +3125,7 @@ TEST_CASE("UIManager: Local Server is only visible in Stationary and retains its
   settings.operating_mode = OperatingMode::Portable;
   ui.sync_settings(settings);
   CHECK(ui.current_screen() == Screen::Operations);
-  CHECK(ui.build_values(make_default_ctx()).row_count == 6);
+  CHECK(ui.build_values(make_default_ctx()).row_count == 7);
 }
 
 TEST_CASE("UIManager: LED Indicator shows its value and retains the selected option",
@@ -3158,5 +3160,23 @@ TEST_CASE("UIManager: LED Indicator shows its value and retains the selected opt
           (next == BackLedIndicator::Aqi ? "LED Indicator: AQI" : "LED Indicator: CO2"));
     open_row(ui, "LED Indicator");
     CHECK(ui.build_values(make_default_ctx()).selected_row == 2 + static_cast<uint8_t>(next));
+  }
+}
+
+TEST_CASE("UIManager: USB Auto Mode round-trips through settings", "[UIManager][settings]") {
+  for (bool enabled : {false, true}) {
+    CAPTURE(enabled);
+    UIManager ui(DEFAULT_UI_CONFIG);
+    GoSettings settings{};
+    settings.auto_mode_on_usb = enabled;
+    ui.sync_settings(settings);
+    go_to_group(ui, "Operations");
+    open_row(ui, "USB Auto Mode");
+    check_rows(ui, {"Exit", "Back", "Off", "On"});
+    CHECK(ui.build_values(make_default_ctx()).selected_row == (enabled ? 3 : 2));
+
+    CHECK(open_row(ui, enabled ? "Off" : "On").action == UIAction::SettingsChanged);
+    ui.apply_to_settings(settings);
+    CHECK(settings.auto_mode_on_usb == !enabled);
   }
 }

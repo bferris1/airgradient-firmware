@@ -802,6 +802,26 @@ target_link_libraries(go_types_tests PRIVATE
 catch_discover_tests(go_types_tests)
 
 # ---------------------------------------------------------------------------
+# go_usb_auto_mode tests — header-only USB auto-mode decision logic
+# ---------------------------------------------------------------------------
+
+add_executable(go_usb_auto_mode_tests
+    go_usb_auto_mode.tests.cpp
+)
+
+target_include_directories(go_usb_auto_mode_tests PRIVATE
+    "${AIRGRADIENT_REPO_ROOT}/products/go/main"
+)
+
+target_compile_definitions(go_usb_auto_mode_tests PRIVATE TEST_HOST)
+
+target_link_libraries(go_usb_auto_mode_tests PRIVATE
+    Catch2::Catch2WithMain
+)
+
+catch_discover_tests(go_usb_auto_mode_tests)
+
+# ---------------------------------------------------------------------------
 # go_text_wrap tests
 # ---------------------------------------------------------------------------
 

@@ -187,7 +187,7 @@ rows follow this order:
 |---|---|
 | Tracking | Status, Pause Tracking or Resume Tracking, Stop Tracking |
 | Settings | Operations, Display & Touch, Hardware Test, Clear Data, Setup Guide, About Device |
-| Operations | Measurement Interval, CO2 Calibration, GPS Mode, Buzzer, Local Server (Stationary only) |
+| Operations | Measurement Interval, CO2 Calibration, GPS Mode, Buzzer, USB Auto Mode, Local Server (Stationary only) |
 | Display & Touch | Pinned Chart, Temperature Unit, Altitude Unit, PM Display, Auto Lock, LED Indicator, LED Brightness, Touch LED (V1 only) |
 | Hardware Test | Peripheral Test, GPS Test, Accelerometer Test, Battery Calibration (V1 only), Play Melody |
 
@@ -347,6 +347,7 @@ pairs so display ordering cannot change persisted mode identities.
 | CO2 Calibration | Action row | Opens confirm dialog |
 | Clear Data | Action row | Opens confirm dialog |
 | Buzzer | `Buzzer: Off / On` | Off, On |
+| USB Auto Mode | `USB Auto Mode: Off / On` | Off, On; default Off |
 | Local Server | `Local Server` | Disable, Enable; default Enable; Stationary only |
 | Play Melody | Hardware Test action row | Chime, Tetris |
 

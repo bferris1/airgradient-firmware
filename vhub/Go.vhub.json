@@ -2580,6 +2580,60 @@
       ]
     },
     {
+      "id": "go.modes.usb-auto",
+      "title": "USB Auto Mode switches between Portable and Stationary on USB power",
+      "objective": "Verify that with USB Auto Mode on, plugging in USB enters Stationary and unplugging returns to Portable, without overriding a manual mode choice or interrupting a tracked route.",
+      "category": "Modes & Sleep",
+      "sub_category": "Mode Transitions",
+      "applicability": [
+        "V1",
+        "V2"
+      ],
+      "setup": [
+        "Go has saved credentials for a test Wi-Fi network that is in range.",
+        "A USB charger and cable.",
+        "Tracking is idle and no Bluetooth app is connected to Go."
+      ],
+      "steps": [
+        {
+          "action": "Disconnect USB. Record the current operating mode and Settings > Operations > USB Auto Mode. Select Portable mode, set USB Auto Mode to On, and return Home.",
+          "expected_result": "The original mode and setting are recorded. Go is in Portable with USB Auto Mode On."
+        },
+        {
+          "action": "Connect USB. Watch Go for up to 45 seconds.",
+          "expected_result": "Within 15 seconds Go leaves Portable and starts connecting to Wi-Fi. Home then shows the connected Wi-Fi icon."
+        },
+        {
+          "action": "Disconnect USB. Watch Go for up to 15 seconds.",
+          "expected_result": "Go returns to Portable: Mode changed is shown and the Wi-Fi icon disappears."
+        },
+        {
+          "action": "Connect USB and wait until Home shows the Wi-Fi icon. Select Main Menu > Operating Mode > Portable, return Home, and keep USB connected for 30 seconds.",
+          "expected_result": "Go stays in Portable for the full 30 seconds."
+        },
+        {
+          "action": "Disconnect USB for 15 seconds. Select Main Menu > Start Tracking, then connect USB and wait 30 seconds.",
+          "expected_result": "Tracking continues and Go stays in Portable."
+        },
+        {
+          "action": "Select Main Menu > Tracking > Stop Tracking with USB still connected. Watch Go for up to 45 seconds.",
+          "expected_result": "Within 15 seconds of stopping, Go switches to Stationary and connects to Wi-Fi."
+        },
+        {
+          "action": "Disconnect USB and wait 15 seconds. Select Main Menu > Operating Mode > Stationary, wait until Home shows the Wi-Fi icon, then connect USB for 15 seconds and disconnect it again. Watch Go for 30 seconds.",
+          "expected_result": "Go stays in Stationary after USB is disconnected, because Stationary was chosen manually."
+        }
+      ],
+      "cleanup": [
+        "Stop tracking if it is still running. Restore the recorded USB Auto Mode setting and operating mode, including after interruption.",
+        "Disconnect USB and return Go Home; record any restoration failure."
+      ],
+      "references": [
+        "products/go/docs/orchestrator.md",
+        "products/go/docs/settings.md"
+      ]
+    },
+    {
       "id": "go.modes.portable-offline",
       "title": "Switching to Energy Saving ends tracking and stops connectable Bluetooth",
       "objective": "Verify a mode change ends recording, closes Bluetooth and redraws the reduced menu on battery and USB power.",

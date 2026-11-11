@@ -704,6 +704,7 @@ public:
 
   // Session-state access (Stationary bring-up + provisioning UX).
   static bool setup_session_active(const Orchestrator &o) { return o._setup_session_active; }
+  static bool usb_auto_active(const Orchestrator &o) { return o._usb_auto_mode.auto_active(); }
   static bool bring_up_pending(const Orchestrator &o) { return o._bring_up_pending; }
   static bool boot_splash_active(const Orchestrator &o) { return o._boot_splash_active; }
   static void set_boot_splash_active(Orchestrator &o, bool v) { o._boot_splash_active = v; }
@@ -13271,4 +13272,175 @@ TEST_CASE("cloud LED indicator retains its current state when the update cannot 
   CHECK(test_spy::led_back_update_co2_count == 0);
   CHECK(test_spy::led_back_update_aqi_count == 0);
   CHECK_FALSE(test_spy::ble_notify_config_called);
+}
+
+// ============================================================================
+// USB auto mode: Portable <-> Stationary on USB power
+// ============================================================================
+
+namespace {
+
+struct UsbAutoFixture : TestFixture {
+  UsbAutoFixture() {
+    settings.auto_mode_on_usb = true;
+    settings.onboarding_done = true;
+    test_spy::wifi_has_saved_networks = true;
+  }
+
+  // Feed one charger status poll with the given power source.
+  void poll(Orchestrator &orch, BmsPowerSource source) {
+    stub_bms.status.power_source = source;
+    A::on_bms_status_timer(orch);
+  }
+};
+
+} // namespace
+
+TEST_CASE("USB auto mode: plug-in enters Stationary without persisting it",
+          "[Orchestrator][usb_auto_mode]") {
+  UsbAutoFixture f;
+  auto orch = f.make_orchestrator();
+  CP2_ALLOW_CONFIG_WRITES(f);
+  bool mode_saved = false;
+  ALLOW_CALL(f.mock_config, set_int(trompeloeil::_, trompeloeil::_))
+      .WITH(std::string(_1) == "opm")
+      .LR_SIDE_EFFECT(mode_saved = true)
+      .RETURN(ConfigStoreResult::OK);
+
+  f.poll(orch, BmsPowerSource::None);
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  CHECK(A::mode(orch) == OperatingMode::Portable); // debounce: one sample
+  f.poll(orch, BmsPowerSource::UsbDcp);
+
+  CHECK(A::mode(orch) == OperatingMode::Stationary);
+  CHECK(A::usb_auto_active(orch));
+  CHECK(test_spy::wifi_connect_saved_called);
+  CHECK_FALSE(mode_saved);
+}
+
+TEST_CASE("USB auto mode: unplug returns to Portable", "[Orchestrator][usb_auto_mode]") {
+  UsbAutoFixture f;
+  auto orch = f.make_orchestrator();
+  CP2_ALLOW_CONFIG_WRITES(f);
+  f.poll(orch, BmsPowerSource::UsbDcp); // boot on USB counts as plug-in
+  REQUIRE(A::mode(orch) == OperatingMode::Stationary);
+
+  f.poll(orch, BmsPowerSource::None);
+  f.poll(orch, BmsPowerSource::None);
+
+  CHECK(A::mode(orch) == OperatingMode::Portable);
+  CHECK_FALSE(A::usb_auto_active(orch));
+  CHECK(test_spy::wifi_shutdown_called);
+}
+
+TEST_CASE("USB auto mode: other settings saved while auto-Stationary keep Portable stored",
+          "[Orchestrator][usb_auto_mode]") {
+  UsbAutoFixture f;
+  auto orch = f.make_orchestrator();
+  CP2_ALLOW_CONFIG_WRITES(f);
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  REQUIRE(A::mode(orch) == OperatingMode::Stationary);
+
+  int saved_mode = -1;
+  ALLOW_CALL(f.mock_config, set_int(trompeloeil::_, trompeloeil::_))
+      .WITH(std::string(_1) == "opm")
+      .LR_SIDE_EFFECT(saved_mode = _2)
+      .RETURN(ConfigStoreResult::OK);
+  GoSettings candidate = A::settings(orch);
+  candidate.buzzer_enabled = !candidate.buzzer_enabled;
+  REQUIRE(A::activate_settings_candidate(orch, candidate));
+
+  CHECK(saved_mode == static_cast<int>(OperatingMode::Portable));
+  CHECK(A::mode(orch) == OperatingMode::Stationary);
+  CHECK(A::usb_auto_active(orch));
+}
+
+TEST_CASE("USB auto mode: a manual mode change is not undone on unplug",
+          "[Orchestrator][usb_auto_mode]") {
+  UsbAutoFixture f;
+  auto orch = f.make_orchestrator();
+  CP2_ALLOW_CONFIG_WRITES(f);
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  REQUIRE(A::usb_auto_active(orch));
+
+  // User re-selects Stationary through a persisted mode change via Portable.
+  A::change_mode(orch, OperatingMode::Portable);
+  CHECK_FALSE(A::usb_auto_active(orch));
+  A::change_mode(orch, OperatingMode::Stationary);
+
+  f.poll(orch, BmsPowerSource::None);
+  f.poll(orch, BmsPowerSource::None);
+  CHECK(A::mode(orch) == OperatingMode::Stationary);
+}
+
+TEST_CASE("USB auto mode: waits while tracking and while a phone is connected",
+          "[Orchestrator][usb_auto_mode]") {
+  UsbAutoFixture f;
+  auto orch = f.make_orchestrator();
+  CP2_ALLOW_CONFIG_WRITES(f);
+  f.poll(orch, BmsPowerSource::None);
+
+  test_spy::ble_connected = true;
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  CHECK(A::mode(orch) == OperatingMode::Portable);
+
+  test_spy::ble_connected = false;
+  REQUIRE(A::start_tracking(orch));
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  CHECK(A::mode(orch) == OperatingMode::Portable);
+}
+
+TEST_CASE("USB auto mode: disabled setting never switches", "[Orchestrator][usb_auto_mode]") {
+  UsbAutoFixture f;
+  f.settings.auto_mode_on_usb = false;
+  auto orch = f.make_orchestrator();
+  CP2_ALLOW_CONFIG_WRITES(f);
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  CHECK(A::mode(orch) == OperatingMode::Portable);
+}
+
+TEST_CASE("USB auto mode: unreachable Wi-Fi returns to Portable instead of provisioning",
+          "[Orchestrator][usb_auto_mode]") {
+  UsbAutoFixture f;
+  auto orch = f.make_orchestrator();
+  CP2_ALLOW_CONFIG_WRITES(f);
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  REQUIRE(A::mode(orch) == OperatingMode::Stationary);
+  test_spy::wifi_start_provisioning_called = false;
+
+  A::dispatch(orch, make_wifi_disconnected(WifiDisconnectReason::no_ap_found));
+
+  CHECK(A::mode(orch) == OperatingMode::Portable);
+  CHECK_FALSE(test_spy::wifi_start_provisioning_called);
+  CHECK_FALSE(A::usb_auto_active(orch));
+  CHECK_FALSE(A::setup_session_active(orch));
+  CHECK(f.ui_manager.current_screen() == Screen::Home);
+
+  // Still plugged in: no retry until the next plug-in.
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  CHECK(A::mode(orch) == OperatingMode::Portable);
+}
+
+TEST_CASE("USB auto mode: unplug during Wi-Fi bring-up closes the session and can re-enter",
+          "[Orchestrator][usb_auto_mode]") {
+  UsbAutoFixture f;
+  auto orch = f.make_orchestrator();
+  CP2_ALLOW_CONFIG_WRITES(f);
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  REQUIRE(A::mode(orch) == OperatingMode::Stationary);
+  REQUIRE(A::setup_session_active(orch)); // "Connecting to saved Wi-Fi..."
+
+  f.poll(orch, BmsPowerSource::None);
+  f.poll(orch, BmsPowerSource::None);
+  CHECK(A::mode(orch) == OperatingMode::Portable);
+  CHECK_FALSE(A::setup_session_active(orch));
+  CHECK(f.ui_manager.current_screen() == Screen::Home);
+
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  CHECK(A::mode(orch) == OperatingMode::Stationary);
+  CHECK(A::usb_auto_active(orch));
 }

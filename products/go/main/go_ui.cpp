@@ -67,6 +67,8 @@ static constexpr uint8_t TOUCH_LED_COUNT = 3;
 
 static const char *const BUZZER_OPTIONS[] = {"Off", "On"};
 static constexpr uint8_t BUZZER_COUNT = 2;
+static const char *const USB_AUTO_MODE_OPTIONS[] = {"Off", "On"};
+static constexpr uint8_t USB_AUTO_MODE_COUNT = 2;
 
 static const char *const LOCAL_SERVER_OPTIONS[] = {"Disable", "Enable"};
 static constexpr uint8_t LOCAL_SERVER_COUNT = 2;
@@ -600,6 +602,7 @@ void UIManager::sync_settings(const GoSettings &s) {
   _setting_touch_led = static_cast<uint8_t>(s.touch_led_intensity);
   _setting_buzzer_volume = s.buzzer_enabled ? 1 : 0;
   _setting_local_server = s.local_server_enabled ? 1 : 0;
+  _setting_usb_auto_mode = s.auto_mode_on_usb ? 1 : 0;
   if (_setting_mode != OperatingMode::Stationary) {
     if (_screen == Screen::SettingsChoice && _editing_setting_id == SettingId::LocalServer) {
       _screen = Screen::Operations;
@@ -652,6 +655,7 @@ void UIManager::apply_to_settings(GoSettings &settings) const {
   settings.touch_led_intensity = static_cast<TouchLedIntensity>(_setting_touch_led);
   settings.buzzer_enabled = (_setting_buzzer_volume == 1);
   settings.local_server_enabled = (_setting_local_server == 1);
+  settings.auto_mode_on_usb = (_setting_usb_auto_mode == 1);
 }
 
 void UIManager::reset_to_home() {
@@ -1025,7 +1029,7 @@ void UIManager::browse_metric(int delta) {
 const UIManager::SettingId *UIManager::group_items(Screen screen, uint8_t &count) const {
   static constexpr SettingId OPERATIONS[] = {SettingId::MeasureInterval, SettingId::Co2Calibration,
                                              SettingId::GpsMode, SettingId::Buzzer,
-                                             SettingId::LocalServer};
+                                             SettingId::UsbAutoMode, SettingId::LocalServer};
   static constexpr SettingId DISPLAY_TOUCH[] = {
       SettingId::PinnedChart,       SettingId::Units,    SettingId::AltitudeUnit,
       SettingId::PmDisplay,         SettingId::AutoLock, SettingId::BackLedIndicator,
@@ -1086,6 +1090,8 @@ uint8_t UIManager::setting_option_count(SettingId setting_id) const {
     return TOUCH_LED_COUNT;
   case SettingId::Buzzer:
     return BUZZER_COUNT;
+  case SettingId::UsbAutoMode:
+    return USB_AUTO_MODE_COUNT;
   case SettingId::LocalServer:
     return LOCAL_SERVER_COUNT;
   case SettingId::PlayMelody:
@@ -1128,6 +1134,8 @@ uint8_t UIManager::setting_current_option(SettingId setting_id) const {
     return _setting_touch_led;
   case SettingId::Buzzer:
     return _setting_buzzer_volume;
+  case SettingId::UsbAutoMode:
+    return _setting_usb_auto_mode;
   case SettingId::LocalServer:
     return _setting_local_server;
   case SettingId::PlayMelody:
@@ -1192,6 +1200,10 @@ void UIManager::apply_setting_choice(uint8_t option_index) {
     break;
   case SettingId::Buzzer:
     _setting_buzzer_volume = option_index;
+    break;
+  case SettingId::UsbAutoMode:
+    if (option_index < USB_AUTO_MODE_COUNT)
+      _setting_usb_auto_mode = option_index;
     break;
   case SettingId::LocalServer:
     if (option_index < LOCAL_SERVER_COUNT)
@@ -1961,6 +1973,10 @@ void UIManager::populate_settings_group_rows(DisplayValues &v) const {
     case SettingId::Buzzer:
       (void)snprintf(label, sizeof(label), "Buzzer: %s", BUZZER_OPTIONS[_setting_buzzer_volume]);
       break;
+    case SettingId::UsbAutoMode:
+      (void)snprintf(label, sizeof(label), "USB Auto Mode: %s",
+                     USB_AUTO_MODE_OPTIONS[_setting_usb_auto_mode]);
+      break;
     case SettingId::LocalServer:
       (void)snprintf(label, sizeof(label), "Local Server");
       break;
@@ -2022,6 +2038,9 @@ void UIManager::populate_settings_choice_rows(DisplayValues &v) const {
     break;
   case SettingId::Buzzer:
     options = BUZZER_OPTIONS;
+    break;
+  case SettingId::UsbAutoMode:
+    options = USB_AUTO_MODE_OPTIONS;
     break;
   case SettingId::LocalServer:
     options = LOCAL_SERVER_OPTIONS;

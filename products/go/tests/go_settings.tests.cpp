@@ -129,7 +129,7 @@ private:
   std::size_t _write_attempt_count = 0;
 };
 
-static constexpr std::size_t GO_SETTINGS_WRITE_COUNT = 34;
+static constexpr std::size_t GO_SETTINGS_WRITE_COUNT = 35;
 
 // ============================================================================
 // Defaults — load from empty store returns struct defaults
@@ -143,6 +143,7 @@ TEST_CASE("load from empty store returns struct defaults", "[settings]") {
   REQUIRE(s.energy_saving_measure_interval_seconds == 300);
   REQUIRE(s.gps_mode == GpsMode::OnWhenTracking);
   REQUIRE(s.operating_mode == OperatingMode::Portable);
+  REQUIRE(s.auto_mode_on_usb == false);
   REQUIRE(s.use_fahrenheit == false);
   REQUIRE(s.use_feet == false);
   REQUIRE(s.pm_use_usaqi == false);
@@ -266,6 +267,7 @@ TEST_CASE("save then load round-trips all fields", "[settings]") {
   original.measure_interval_seconds = 60;
   original.gps_mode = GpsMode::AlwaysOn;
   original.operating_mode = OperatingMode::Offline;
+  original.auto_mode_on_usb = true;
   original.use_fahrenheit = true;
   original.use_feet = true;
   original.pm_use_usaqi = true;
@@ -283,6 +285,7 @@ TEST_CASE("save then load round-trips all fields", "[settings]") {
   REQUIRE(loaded.measure_interval_seconds == original.measure_interval_seconds);
   REQUIRE(loaded.gps_mode == original.gps_mode);
   REQUIRE(loaded.operating_mode == original.operating_mode);
+  REQUIRE(loaded.auto_mode_on_usb == original.auto_mode_on_usb);
   REQUIRE(loaded.use_fahrenheit == original.use_fahrenheit);
   REQUIRE(loaded.use_feet == original.use_feet);
   REQUIRE(loaded.pm_use_usaqi == original.pm_use_usaqi);
@@ -291,6 +294,13 @@ TEST_CASE("save then load round-trips all fields", "[settings]") {
   REQUIRE(loaded.co2_abc_days == original.co2_abc_days);
   REQUIRE(loaded.tvoc_learning_offset == original.tvoc_learning_offset);
   REQUIRE(loaded.nox_learning_offset == original.nox_learning_offset);
+}
+
+TEST_CASE("Go settings equality includes USB auto mode", "[settings]") {
+  GoSettings off;
+  GoSettings on;
+  on.auto_mode_on_usb = true;
+  REQUIRE_FALSE(off.equals(on));
 }
 
 TEST_CASE("Go settings equality includes altitude unit", "[settings]") {
