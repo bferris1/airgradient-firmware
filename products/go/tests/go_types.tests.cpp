@@ -9,6 +9,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "go_clock.h"
 #include "go_type_helpers.hpp"
 
 namespace {
@@ -331,4 +332,17 @@ TEST_CASE("tracking timing restoration follows the authoritative state", "[go][t
   check_same_timing(tracking_timing_for_state(recording, TrackingState::Idle), TrackingTiming{});
   check_same_timing(tracking_timing_for_state(recording, static_cast<TrackingState>(255)),
                     TrackingTiming{});
+}
+
+// ---------------------------------------------------------------------------
+// Wall-clock validity
+// ---------------------------------------------------------------------------
+
+TEST_CASE("is_wall_clock_valid rejects an unset clock counting from 1970", "[go_types][clock]") {
+  CHECK_FALSE(is_wall_clock_valid(0));
+  CHECK_FALSE(is_wall_clock_valid(3600)); // one hour of uptime
+  CHECK_FALSE(is_wall_clock_valid(-1));
+  CHECK_FALSE(is_wall_clock_valid(GO_MIN_VALID_EPOCH_S - 1));
+  CHECK(is_wall_clock_valid(GO_MIN_VALID_EPOCH_S));
+  CHECK(is_wall_clock_valid(1762819200)); // 2025-11-11
 }

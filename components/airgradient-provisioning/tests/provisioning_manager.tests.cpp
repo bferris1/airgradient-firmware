@@ -103,6 +103,9 @@ public:
     return stop_mdns_status;
   }
 
+  WifiStatus start_sntp(const WifiSntpConfig &) override { return WifiStatus::Ok; }
+  WifiStatus stop_sntp() override { return WifiStatus::Ok; }
+
   WifiStatus arm_dhcp_timeout(uint32_t) override { return WifiStatus::Ok; }
   WifiStatus cancel_dhcp_timeout() override { return WifiStatus::Ok; }
   WifiStatus arm_retry_timer(uint32_t) override { return WifiStatus::Ok; }
@@ -122,6 +125,7 @@ public:
   void set_on_ap_client_left(WifiApClientLeftCallback cb) override { _on_left = std::move(cb); }
   void set_on_dhcp_timeout(std::function<void()> cb) override { _on_dhcp = std::move(cb); }
   void set_on_retry_due(std::function<void()> cb) override { _on_retry = std::move(cb); }
+  void set_on_time_synced(WifiTimeSyncedCallback) override {}
 
   // -- Test hooks: fire HAL-level events to drive WifiManager --
 

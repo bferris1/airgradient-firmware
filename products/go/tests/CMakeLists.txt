@@ -652,6 +652,7 @@ target_compile_definitions(go_app_test_support PUBLIC
     CONFIG_TRACKING_FSYNC_INTERVAL_MS=30000
     CONFIG_GO_PORTABLE_PROV_RADIO_IDLE_MS=90000
     CONFIG_AG_HTTP_PORT=80
+    CONFIG_GO_SNTP_SERVER="pool.ntp.org"
 )
 
 target_link_libraries(go_app_test_support PUBLIC tinycbor)

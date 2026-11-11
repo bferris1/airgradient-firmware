@@ -39,6 +39,7 @@ enum class EventType : uint8_t {
   // --- Wi-Fi events ---
   WifiConnected,            // payload: uint32_t wifi_ip (network byte order)
   WifiDisconnected,         // payload: uint8_t wifi_disconnect_reason
+  ClockSynced,              // payload: int64_t clock_epoch_s (SNTP sync, UTC)
   ProvisioningStateChanged, // payload: ProvisioningEventPayload prov
   PortableProvRequest,      // no payload (parsed request in provisioner buffer)
 
@@ -133,6 +134,7 @@ struct Event {
     SensorTestResults sensor_test_results;   // SensorTestDone (5 bools)
     uint32_t wifi_ip;                        // WifiConnected (network byte order)
     uint8_t wifi_disconnect_reason;          // WifiDisconnected (WifiDisconnectReason)
+    int64_t clock_epoch_s;                   // ClockSynced (UTC POSIX seconds)
     ProvisioningEventPayload prov;           // ProvisioningStateChanged
     CloudResultByte cloud_result;            // PostMeasuresResult (AgClientResult byte)
     FetchConfigEventPayload fetch_config;    // FetchConfigResult

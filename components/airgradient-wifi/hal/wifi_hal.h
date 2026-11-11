@@ -18,7 +18,7 @@
 /// Product code should not use this interface directly.
 ///
 /// The HAL translates raw ESP-IDF events into typed callbacks. It does NOT
-/// own retry logic, state machine management, or mDNS lifecycle. The
+/// own retry logic, state machine management, or mDNS / SNTP lifecycle. The
 /// timer-arming methods exist so WifiManager can keep its scheduling
 /// decisions in pure C++ while delegating the actual timer source to the
 /// driver (`esp_timer` on hardware, mockable on host).
@@ -101,6 +101,16 @@ public:
   /// Stop mDNS and remove all service records.
   virtual WifiStatus stop_mdns() = 0;
 
+  // -- SNTP --
+
+  /// Start the SNTP client. The client sets the system clock itself on each
+  /// successful sync and then invokes the on_time_synced callback. Calling
+  /// this while the client is already running returns Ok and changes nothing.
+  virtual WifiStatus start_sntp(const WifiSntpConfig &config) = 0;
+
+  /// Stop the SNTP client. Safe to call when it is not running.
+  virtual WifiStatus stop_sntp() = 0;
+
   // -- Timers (driven by WifiManager) --
   //
   // ESP-IDF does not expose a DHCP-failure event, and the manager owns the
@@ -148,6 +158,9 @@ public:
 
   /// Invoked when the retry timer fires.
   virtual void set_on_retry_due(std::function<void()> cb) = 0;
+
+  /// Invoked after SNTP sets the system clock.
+  virtual void set_on_time_synced(WifiTimeSyncedCallback cb) = 0;
 };
 
 #endif // AG_WIFI_HAL_H

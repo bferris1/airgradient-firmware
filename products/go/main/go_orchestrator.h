@@ -390,6 +390,7 @@ private:
   void enter_stationary();
   void on_wifi_connected(uint32_t ip);
   void on_wifi_disconnected(WifiDisconnectReason reason);
+  void on_clock_synced(int64_t epoch_s);
   void on_provisioning_state_changed(const ProvisioningEventPayload &payload);
   bool activate_local_endpoint();
   void publish_local_snapshots();

@@ -209,6 +209,12 @@ struct WifiMdnsProfile {
   WifiMdnsLifecycle lifecycle = WifiMdnsLifecycle::StaIpAuto;
 };
 
+/// SNTP client configuration. The server string is borrowed and must
+/// outlive the running client.
+struct WifiSntpConfig {
+  const char *server = nullptr; ///< NTP server hostname (required)
+};
+
 struct WifiStatusSnapshot {
   WifiMode mode = WifiMode::Off;
   WifiStaState sta_state = WifiStaState::Disconnected;
@@ -245,5 +251,10 @@ using WifiApClientJoinedCallback = std::function<void(const uint8_t mac[6])>;
 
 /// Invoked when a client disconnects from the soft-AP.
 using WifiApClientLeftCallback = std::function<void(const uint8_t mac[6])>;
+
+/// Invoked after SNTP has set the system clock. epoch_s is the new UTC
+/// POSIX time in seconds. Fires from the network stack task; callers must
+/// not block.
+using WifiTimeSyncedCallback = std::function<void(int64_t epoch_s)>;
 
 #endif // AG_WIFI_TYPES_H

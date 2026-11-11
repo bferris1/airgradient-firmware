@@ -12,6 +12,7 @@
 
 #include "esp_log.h"
 #include "esp_mac.h"
+#include "esp_netif_sntp.h"
 #include "esp_wifi_default.h"
 #include "lwip/inet.h"
 #include "mdns.h"
@@ -19,6 +20,8 @@
 #include "nvs_flash.h"
 
 static constexpr const char *TAG = "EspWifiHal";
+
+EspWifiHal *EspWifiHal::_sntp_owner = nullptr;
 
 namespace {
 
@@ -163,6 +166,7 @@ void EspWifiHal::deinit() {
     mdns_free();
     _mdns_started = false;
   }
+  stop_sntp();
   if (_wifi_handler_instance != nullptr) {
     esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, _wifi_handler_instance);
     _wifi_handler_instance = nullptr;
@@ -396,6 +400,43 @@ WifiStatus EspWifiHal::stop_mdns() {
   return WifiStatus::Ok;
 }
 
+WifiStatus EspWifiHal::start_sntp(const WifiSntpConfig &config) {
+  if (config.server == nullptr || config.server[0] == '\0') {
+    return WifiStatus::InvalidArgument;
+  }
+  if (_sntp_started) {
+    return WifiStatus::Ok;
+  }
+  esp_sntp_config_t sntp_cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG(config.server);
+  sntp_cfg.sync_cb = &EspWifiHal::_sntp_sync_cb;
+  _sntp_owner = this;
+  const esp_err_t err = esp_netif_sntp_init(&sntp_cfg);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "esp_netif_sntp_init failed: %s", esp_err_to_name(err));
+    _sntp_owner = nullptr;
+    return WifiStatus::Failed;
+  }
+  _sntp_started = true;
+  return WifiStatus::Ok;
+}
+
+WifiStatus EspWifiHal::stop_sntp() {
+  if (_sntp_started) {
+    esp_netif_sntp_deinit();
+    _sntp_started = false;
+    _sntp_owner = nullptr;
+  }
+  return WifiStatus::Ok;
+}
+
+void EspWifiHal::_sntp_sync_cb(struct timeval *tv) {
+  EspWifiHal *owner = _sntp_owner;
+  if (owner == nullptr || tv == nullptr || !owner->_on_time_synced) {
+    return;
+  }
+  owner->_on_time_synced(static_cast<int64_t>(tv->tv_sec));
+}
+
 WifiStatus EspWifiHal::arm_dhcp_timeout(uint32_t timeout_ms) {
   if (_dhcp_timer == nullptr) {
     return WifiStatus::Failed;
@@ -459,6 +500,10 @@ void EspWifiHal::set_on_ap_client_left(WifiApClientLeftCallback cb) {
 }
 void EspWifiHal::set_on_dhcp_timeout(std::function<void()> cb) { _on_dhcp_timeout = std::move(cb); }
 void EspWifiHal::set_on_retry_due(std::function<void()> cb) { _on_retry_due = std::move(cb); }
+
+void EspWifiHal::set_on_time_synced(WifiTimeSyncedCallback cb) {
+  _on_time_synced = std::move(cb);
+}
 
 void EspWifiHal::_wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, void *data) {
   (void)base;

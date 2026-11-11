@@ -22,6 +22,7 @@ This component owns:
 - Async Wi-Fi scan (only valid while STA is disconnected)
 - Soft-AP control with caller-provided SSID / password
 - Retained mDNS profiles with automatic STA-IP or explicit manual lifecycle
+- SNTP client lifecycle (start / stop) and a time-synced callback
 - Static IP configuration as an alternative to DHCP
 - Disconnect-reason normalisation from raw ESP-IDF codes
 - Power-save mode selection (`None` / `MinModem` / `MaxModem`)
@@ -74,7 +75,7 @@ Guideline:
 ## Design
 
 ```text
-caller -> WifiManager -> WifiHal& -> EspWifiHal -> esp_wifi_* / esp_netif_* / mdns_*
+caller -> WifiManager -> WifiHal& -> EspWifiHal -> esp_wifi_* / esp_netif_* / esp_netif_sntp_* / mdns_*
 ```
 
 ```mermaid
@@ -86,7 +87,8 @@ flowchart LR
 ```
 
 `WifiManager` owns: mode state machine, connection retry with exponential
-backoff, retained mDNS profile lifecycle, disconnect-reason normalisation,
+backoff, retained mDNS profile lifecycle, SNTP client lifecycle,
+disconnect-reason normalisation,
 DHCP acquisition timeout. The HAL stays thin — translate ESP-IDF events
 into typed callbacks, drive timers on behalf of the manager, and forward
 mode / scan / connect calls. Driver-side code never makes scheduling
@@ -185,6 +187,19 @@ failed stop keeps the profile marked running so the stop can be retried.
 the profile if that stop fails. `set_mdns_config()` remains as a compatibility
 wrapper that installs a `StaIpAuto` profile.
 
+### SNTP
+
+`start_sntp()` starts the ESP-IDF SNTP client against one server. It requires
+`Sta` or `ApSta` mode and a non-empty server; the server string is borrowed and
+must outlive the running client. Start and stop are idempotent, a failed start
+or stop stays retryable, and `set_mode(Off)` stops the client.
+
+The client sets the system clock itself on every successful sync, then the
+`set_on_time_synced()` callback receives the new UTC epoch in seconds. It
+re-syncs every `CONFIG_LWIP_SNTP_UPDATE_DELAY` and keeps running across STA
+reconnects. The callback fires from the network stack task, not the system
+event loop, so it must not block.
+
 ## Configuration
 
 The component exposes one Kconfig knob under **AirGradient Wi-Fi** in
@@ -220,6 +235,8 @@ the top-level [tests runner](../../tests/README.md). They cover:
 - disconnect-reason mapping (raw ESP-IDF code → `WifiDisconnectReason`)
 - mDNS profile validation, explicit start / stop / clear, automatic reconnect,
   manual disconnect survival, and mode-Off teardown
+- SNTP mode and server validation, idempotent start / stop, retryable
+  failures, mode-Off teardown, and time-synced callback forwarding
 - DHCP timeout policy (treated as `dhcp_failed`, non-retriable)
 - mode enforcement on `connect` / `start_scan` / `start_ap`
 - scan-only-while-disconnected enforcement
@@ -228,6 +245,7 @@ the top-level [tests runner](../../tests/README.md). They cover:
 - `status_snapshot` zeroes STA-only fields when disconnected
 
 Hardware-only behaviour (real STA association, AP DHCP, mDNS resolution,
+SNTP clock sync,
 static IP application, power-save effects, NVS clear) is verified
 manually on a real ESP32; see `products/reference/main/test_wifi.cpp`
 for the runtime smoke test.

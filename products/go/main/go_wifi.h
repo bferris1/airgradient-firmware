@@ -71,6 +71,10 @@ public:
     const char *model = nullptr;
     const char *hostname = nullptr;
     uint16_t http_port = 80;
+
+    // SNTP server for setting the system clock while online. nullptr or
+    // empty disables SNTP. Must outlive this service.
+    const char *ntp_server = nullptr;
   };
 
   WifiService(RtosQueueHandle event_queue, const Deps &deps, const Config &cfg);
@@ -153,7 +157,8 @@ public:
   uint32_t next_deadline_ms() const;
 
   /// Retry retained provisioning success delivery, consume pending deadline
-  /// clears, and fire synthetic disconnects on expiry. Idempotent.
+  /// clears, start SNTP once online outside provisioning, and fire synthetic
+  /// disconnects on expiry. Idempotent.
   void tick(uint32_t now_ms);
 
 #ifdef TEST_HOST
@@ -169,6 +174,8 @@ private:
   // WifiManager callback adapters (run in ESP-IDF event-loop task).
   void _on_got_ip(uint32_t ip);
   void _on_disconnected(WifiDisconnectReason reason);
+  void _on_time_synced(int64_t epoch_s);
+  void _start_sntp_if_due();
 
   // ProvisioningManager event adapter (run in NimBLE / portal task).
   // Forwards to the orchestrator queue, except the intermediate Stopped
@@ -223,6 +230,10 @@ private:
   // the next tick() can clear without racing.
   uint32_t _initial_connect_deadline_ms = 0;
   std::atomic<bool> _clear_deadline_pending{false};
+
+  // Latched on an SNTP start failure so tick() does not retry (and log) every
+  // loop. Cleared by shutdown(), so the next Stationary entry tries again.
+  bool _sntp_start_failed = false;
 
   // Runtime reconnect timer (single-writer, orchestrator task): armed by
   // schedule_reconnect(), fired/cleared by tick(). Carries the static IP to

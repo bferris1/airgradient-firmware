@@ -135,6 +135,7 @@ Defaults are listed where they exist; the rest come from `GoApp`.
 | `serial_number` / `firmware_version` / `model` | — | Local mDNS TXT identity; strings are borrowed for the service lifetime |
 | `hostname` | — | Local mDNS hostname and provisioning hostname |
 | `http_port` | `80` | Shared provisioning and local API listener port |
+| `ntp_server` | `nullptr` | SNTP server; `GoApp` sets `CONFIG_GO_SNTP_SERVER` (`pool.ntp.org`). `nullptr` or empty disables SNTP. Borrowed for the service lifetime |
 
 The provisioning BLE transport is configured for one-shot Wi-Fi
 onboarding: `NO_INPUT_NO_OUTPUT` IO capability and `AgBleAuth::SC` only
@@ -312,6 +313,23 @@ stops mDNS), stop the listener, unregister local routes, then disconnect and
 turn Wi-Fi off. This also stops a listener retained by an interrupted
 provisioning handoff.
 
+### Clock Sync (SNTP)
+
+Stationary mode sets the system clock over SNTP so route points recorded after
+a switch to Portable carry real timestamps before the first GPS fix. Switching
+Stationary to Portable does not reboot, so the clock carries over.
+
+`tick()` starts the SNTP client once the service is online, a server is
+configured, and no provisioning session owns the link. It never starts from the
+got-IP callback, because `WifiManager` forbids calls back into it there. The
+client keeps running across reconnects and re-syncs hourly
+(`CONFIG_LWIP_SNTP_UPDATE_DELAY`). `shutdown()` sets Wi-Fi mode `Off`, which
+stops it, so SNTP never runs alongside GPS in Portable.
+
+A start failure is logged once and latched until `shutdown()`, so the next
+Stationary entry retries. The clock does not survive the Energy Saving power
+reset or a full power loss; GPS, SNTP, or BLE aiding sets it again afterwards.
+
 ### Provisioning Start
 
 After clearing retained provisioning success and tearing down the local
@@ -415,7 +433,7 @@ subsequent `Stopped` teardown.
 
 ## Events
 
-`WifiService` is the sole producer of three event types on the central
+`WifiService` is the sole producer of four event types on the central
 queue. All events are consumed by `Orchestrator::dispatch()`.
 
 | EventType | Payload | Producer path |
@@ -423,6 +441,7 @@ queue. All events are consumed by `Orchestrator::dispatch()`.
 | `WifiConnected` | `uint32_t wifi_ip` (network byte order) | `_on_got_ip()` after a successful STA association outside provisioning |
 | `WifiDisconnected` | `uint8_t wifi_disconnect_reason` (`WifiDisconnectReason`) | `_on_disconnected()` for every reason except `requested_by_user`, plus synthetic `connection_lost` from `tick()` on deadline expiry and synthetic `no_ap_found` / `unknown` on connect rejection |
 | `ProvisioningStateChanged` | `ProvisioningEventPayload prov` | `_on_provisioning_event()` for every `ProvisioningEvent`, minus the swallowed mid-switch `Stopped` |
+| `ClockSynced` | `int64_t clock_epoch_s` (UTC) | `_on_time_synced()` after SNTP sets the clock; non-blocking send from the network stack task, dropped with a warning if the queue is full |
 
 `ProvisioningEventPayload` (`products/go/main/go_wifi_types.h`)
 carries `disable_cloud` and `static_ip` inline so the orchestrator can
@@ -456,7 +475,8 @@ _svc.wifi.tick(static_cast<uint32_t>(RTOS::get_time_ms()));
 
 `tick(now_ms)` first retries a retained provisioning `Connected` event, then
 consumes `_clear_deadline_pending` (set by the IP
-callback) to clear the armed connect-window deadline, then checks whether
+callback) to clear the armed connect-window deadline, starts SNTP when due
+(see [Clock Sync (SNTP)](#clock-sync-sntp)), then checks whether
 it has expired without an IP. On expiry it posts a synthetic
 `WifiDisconnected{connection_lost}`; a full queue leaves the deadline due until
 delivery succeeds. The orchestrator opens provisioning in normal mode or
@@ -563,6 +583,9 @@ in `products/go/tests/go_wifi.tests.cpp` and cover:
   credentials. Lifecycle boundaries clear the factory selection, and
   `next_deadline_ms()` returns the nearer of the two timers.
 - Shutdown path (detaches callbacks, zeroes latches, sets mode `Off`).
+- SNTP: starts once after the first IP, waits for provisioning to finish,
+  stays off without a server, latches a start failure until `shutdown()`,
+  stops on `shutdown()`, and posts `ClockSynced` without blocking.
 
 The orchestrator tests in `products/go/tests/go_orchestrator.tests.cpp`
 drive the higher-level mode policy against a stubbed `WifiService`, including

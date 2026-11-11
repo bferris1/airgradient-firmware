@@ -282,6 +282,7 @@ Posted into the queue by background tasks.
 | `BleAuthComplete` | BLE Service | encryption-change result; carries `ble_auth_ok` (link encrypted/authenticated) |
 | `WifiConnected` | Wi-Fi Service | STA acquired IP; carries network-byte-order IPv4 |
 | `WifiDisconnected` | Wi-Fi Service | STA disconnect (real or synthetic from window expiry); carries normalised `WifiDisconnectReason` |
+| `ClockSynced` | Wi-Fi Service | SNTP set the system clock in Stationary; carries the UTC epoch |
 | `ProvisioningStateChanged` | Wi-Fi Service | provisioning state transition; carries `ProvisioningEvent`, transport, stop reason, IP, `disable_cloud`, `static_ip` |
 | `PostMeasuresResult` | Cloud Task | `AgClientResult` byte — POST outcome |
 | `FetchConfigResult` | Cloud Task | `FetchConfigEventPayload` — FETCH outcome plus selected valid config updates |

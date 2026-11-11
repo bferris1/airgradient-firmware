@@ -17,7 +17,7 @@
 
 /// ESP-IDF backed WifiHal implementation.
 ///
-/// Wraps esp_wifi_*, esp_netif_*, mdns_*, esp_timer_*. Translates the raw
+/// Wraps esp_wifi_*, esp_netif_*, esp_netif_sntp_*, mdns_*, esp_timer_*. Translates the raw
 /// ESP-IDF event loop into typed callbacks.
 ///
 /// All callbacks fire from the ESP-IDF system event loop task context.
@@ -54,6 +54,9 @@ public:
   WifiStatus start_mdns(const WifiMdnsConfig &config) override;
   WifiStatus stop_mdns() override;
 
+  WifiStatus start_sntp(const WifiSntpConfig &config) override;
+  WifiStatus stop_sntp() override;
+
   WifiStatus arm_dhcp_timeout(uint32_t timeout_ms) override;
   WifiStatus cancel_dhcp_timeout() override;
   WifiStatus arm_retry_timer(uint32_t delay_ms) override;
@@ -67,6 +70,7 @@ public:
   void set_on_ap_client_left(WifiApClientLeftCallback cb) override;
   void set_on_dhcp_timeout(std::function<void()> cb) override;
   void set_on_retry_due(std::function<void()> cb) override;
+  void set_on_time_synced(WifiTimeSyncedCallback cb) override;
 
 private:
   // WiFi IDF API Callbacks. Only bridge to own methods.
@@ -74,6 +78,7 @@ private:
   static void _ip_event_handler(void *arg, esp_event_base_t base, int32_t id, void *data);
   static void _dhcp_timer_cb(void *arg);
   static void _retry_timer_cb(void *arg);
+  static void _sntp_sync_cb(struct timeval *tv);
 
   void _handle_wifi_event(int32_t id, void *data);
   void _handle_ip_event(int32_t id, void *data);
@@ -89,6 +94,7 @@ private:
 
   bool _initialized = false;
   bool _mdns_started = false;
+  bool _sntp_started = false;
   WifiMode _mode = WifiMode::Off;
   bool _has_static_ip = false;
   WifiStaticIpConfig _static_ip = {};
@@ -102,6 +108,11 @@ private:
   WifiApClientLeftCallback _on_ap_client_left;
   std::function<void()> _on_dhcp_timeout;
   std::function<void()> _on_retry_due;
+  WifiTimeSyncedCallback _on_time_synced;
+
+  // esp_netif_sntp's sync callback carries no user argument, so the running
+  // client's owner is kept here. Only one SNTP client exists per device.
+  static EspWifiHal *_sntp_owner;
 };
 
 #endif // AG_ESP_WIFI_HAL_H

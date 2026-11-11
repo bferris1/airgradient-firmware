@@ -83,6 +83,16 @@ public:
     return stop_mdns_status;
   }
 
+  WifiStatus start_sntp(const WifiSntpConfig &cfg) override {
+    start_sntp_calls += 1;
+    last_sntp_server = (cfg.server != nullptr) ? cfg.server : "";
+    return start_sntp_status;
+  }
+  WifiStatus stop_sntp() override {
+    stop_sntp_calls += 1;
+    return stop_sntp_status;
+  }
+
   WifiStatus arm_dhcp_timeout(uint32_t timeout_ms) override {
     dhcp_armed_calls += 1;
     last_dhcp_timeout_ms = timeout_ms;
@@ -116,6 +126,7 @@ public:
   void set_on_ap_client_left(WifiApClientLeftCallback cb) override { ap_leave_cb = std::move(cb); }
   void set_on_dhcp_timeout(std::function<void()> cb) override { dhcp_timeout_cb = std::move(cb); }
   void set_on_retry_due(std::function<void()> cb) override { retry_due_cb = std::move(cb); }
+  void set_on_time_synced(WifiTimeSyncedCallback cb) override { time_synced_cb = std::move(cb); }
 
   // Counters
   int set_mode_calls = 0;
@@ -127,6 +138,8 @@ public:
   int start_ap_calls = 0;
   int start_mdns_calls = 0;
   int stop_mdns_calls = 0;
+  int start_sntp_calls = 0;
+  int stop_sntp_calls = 0;
   int dhcp_armed_calls = 0;
   int dhcp_cancel_calls = 0;
   int retry_armed_calls = 0;
@@ -136,6 +149,9 @@ public:
   WifiStatus scan_status = WifiStatus::Ok;
   WifiStatus start_mdns_status = WifiStatus::Ok;
   WifiStatus stop_mdns_status = WifiStatus::Ok;
+  WifiStatus start_sntp_status = WifiStatus::Ok;
+  WifiStatus stop_sntp_status = WifiStatus::Ok;
+  std::string last_sntp_server;
   WifiMode last_mode_set = WifiMode::Off;
   std::string last_ssid;
   std::string last_password;
@@ -153,6 +169,7 @@ public:
   WifiApClientLeftCallback ap_leave_cb;
   std::function<void()> dhcp_timeout_cb;
   std::function<void()> retry_due_cb;
+  WifiTimeSyncedCallback time_synced_cb;
 
 private:
   WifiMode _mode = WifiMode::Off;
@@ -1489,4 +1506,92 @@ TEST_CASE("explicit connect leaves the saved-network store untouched", "[wifi-ma
   char out[WIFI_MAX_SAVED_NETWORKS][33] = {};
   REQUIRE(mgr.list_networks(out, WIFI_MAX_SAVED_NETWORKS) == 1);
   REQUIRE(std::string(out[0]) == "Saved");
+}
+
+// ---------------------------------------------------------------------------
+// SNTP lifecycle
+// ---------------------------------------------------------------------------
+
+TEST_CASE("SNTP start requires STA mode and a server", "[wifi-manager][sntp]") {
+  FakeWifiHal hal;
+  FakeConfigStore backend;
+  WifiManager mgr(hal, backend);
+
+  WifiSntpConfig sntp{};
+  sntp.server = "pool.ntp.org";
+  REQUIRE(mgr.start_sntp(sntp) == WifiStatus::InvalidState);
+  REQUIRE(hal.start_sntp_calls == 0);
+
+  REQUIRE(mgr.set_mode(WifiMode::Ap) == WifiStatus::Ok);
+  REQUIRE(mgr.start_sntp(sntp) == WifiStatus::InvalidState);
+  REQUIRE(hal.start_sntp_calls == 0);
+
+  REQUIRE(mgr.set_mode(WifiMode::Sta) == WifiStatus::Ok);
+  WifiSntpConfig no_server{};
+  REQUIRE(mgr.start_sntp(no_server) == WifiStatus::InvalidArgument);
+  no_server.server = "";
+  REQUIRE(mgr.start_sntp(no_server) == WifiStatus::InvalidArgument);
+  REQUIRE(hal.start_sntp_calls == 0);
+  REQUIRE_FALSE(mgr.is_sntp_running());
+
+  REQUIRE(mgr.start_sntp(sntp) == WifiStatus::Ok);
+  REQUIRE(hal.start_sntp_calls == 1);
+  REQUIRE(hal.last_sntp_server == "pool.ntp.org");
+  REQUIRE(mgr.is_sntp_running());
+}
+
+TEST_CASE("SNTP lifecycle is idempotent and failures are retryable", "[wifi-manager][sntp]") {
+  FakeWifiHal hal;
+  FakeConfigStore backend;
+  WifiManager mgr(hal, backend);
+  REQUIRE(mgr.set_mode(WifiMode::Sta) == WifiStatus::Ok);
+  WifiSntpConfig sntp{};
+  sntp.server = "pool.ntp.org";
+
+  hal.start_sntp_status = WifiStatus::Failed;
+  REQUIRE(mgr.start_sntp(sntp) == WifiStatus::Failed);
+  REQUIRE_FALSE(mgr.is_sntp_running());
+  hal.start_sntp_status = WifiStatus::Ok;
+  REQUIRE(mgr.start_sntp(sntp) == WifiStatus::Ok);
+  REQUIRE(mgr.start_sntp(sntp) == WifiStatus::Ok);
+  REQUIRE(hal.start_sntp_calls == 2);
+
+  hal.stop_sntp_status = WifiStatus::Failed;
+  REQUIRE(mgr.stop_sntp() == WifiStatus::Failed);
+  REQUIRE(mgr.is_sntp_running());
+  hal.stop_sntp_status = WifiStatus::Ok;
+  REQUIRE(mgr.stop_sntp() == WifiStatus::Ok);
+  REQUIRE(mgr.stop_sntp() == WifiStatus::Ok);
+  REQUIRE(hal.stop_sntp_calls == 2);
+  REQUIRE_FALSE(mgr.is_sntp_running());
+}
+
+TEST_CASE("set_mode(Off) stops SNTP", "[wifi-manager][sntp]") {
+  FakeWifiHal hal;
+  FakeConfigStore backend;
+  WifiManager mgr(hal, backend);
+  REQUIRE(mgr.set_mode(WifiMode::Sta) == WifiStatus::Ok);
+  WifiSntpConfig sntp{};
+  sntp.server = "pool.ntp.org";
+  REQUIRE(mgr.start_sntp(sntp) == WifiStatus::Ok);
+
+  REQUIRE(mgr.set_mode(WifiMode::Off) == WifiStatus::Ok);
+  REQUIRE(hal.stop_sntp_calls == 1);
+  REQUIRE_FALSE(mgr.is_sntp_running());
+}
+
+TEST_CASE("SNTP sync is forwarded to the product callback", "[wifi-manager][sntp]") {
+  FakeWifiHal hal;
+  FakeConfigStore backend;
+  int64_t synced = 0;
+  {
+    WifiManager mgr(hal, backend);
+    REQUIRE(hal.time_synced_cb);
+    hal.time_synced_cb(1700000000); // no product callback yet: ignored
+    mgr.set_on_time_synced([&synced](int64_t epoch_s) { synced = epoch_s; });
+    hal.time_synced_cb(1762819200);
+    REQUIRE(synced == 1762819200);
+  }
+  // Destroying the manager detaches the HAL callback.
+  REQUIRE_FALSE(hal.time_synced_cb);
 }

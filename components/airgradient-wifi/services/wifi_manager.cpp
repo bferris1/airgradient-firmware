@@ -32,6 +32,7 @@ WifiManager::WifiManager(WifiHal &hal, ConfigStore &store) : _hal(hal), _creds(s
   _hal.set_on_ap_client_left([this](const uint8_t mac[6]) { _on_hal_ap_client_left(mac); });
   _hal.set_on_dhcp_timeout([this]() { _on_hal_dhcp_timeout(); });
   _hal.set_on_retry_due([this]() { _on_hal_retry_due(); });
+  _hal.set_on_time_synced([this](int64_t epoch_s) { _on_hal_time_synced(epoch_s); });
 }
 
 WifiManager::~WifiManager() {
@@ -44,6 +45,7 @@ WifiManager::~WifiManager() {
   _hal.set_on_ap_client_left(nullptr);
   _hal.set_on_dhcp_timeout(nullptr);
   _hal.set_on_retry_due(nullptr);
+  _hal.set_on_time_synced(nullptr);
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +199,37 @@ WifiStatus WifiManager::stop_mdns() {
   return status;
 }
 
+WifiStatus WifiManager::start_sntp(const WifiSntpConfig &config) {
+  if (_sntp_running) {
+    return WifiStatus::Ok;
+  }
+  const WifiMode mode = _hal.get_mode();
+  if (mode != WifiMode::Sta && mode != WifiMode::ApSta) {
+    return WifiStatus::InvalidState;
+  }
+  if (config.server == nullptr || config.server[0] == '\0') {
+    return WifiStatus::InvalidArgument;
+  }
+  const WifiStatus status = _hal.start_sntp(config);
+  if (status == WifiStatus::Ok) {
+    _sntp_running = true;
+  }
+  return status;
+}
+
+WifiStatus WifiManager::stop_sntp() {
+  if (!_sntp_running) {
+    return WifiStatus::Ok;
+  }
+  const WifiStatus status = _hal.stop_sntp();
+  if (status == WifiStatus::Ok) {
+    _sntp_running = false;
+  }
+  return status;
+}
+
+bool WifiManager::is_sntp_running() const { return _sntp_running; }
+
 WifiStatus WifiManager::clear_mdns_profile() {
   const WifiStatus status = stop_mdns();
   if (status != WifiStatus::Ok) {
@@ -228,6 +261,10 @@ void WifiManager::set_dhcp_timeout_ms(uint32_t timeout_ms) { _dhcp_timeout_ms = 
 WifiStatus WifiManager::set_mode(WifiMode mode) {
   const WifiMode current = _hal.get_mode();
   if (mode == WifiMode::Off) {
+    const WifiStatus sntp_status = stop_sntp();
+    if (sntp_status != WifiStatus::Ok) {
+      return sntp_status;
+    }
     const WifiStatus mdns_status = stop_mdns();
     if (mdns_status != WifiStatus::Ok) {
       return mdns_status;
@@ -409,6 +446,10 @@ void WifiManager::set_on_ap_client_left(WifiApClientLeftCallback cb) {
   _on_ap_client_left = std::move(cb);
 }
 
+void WifiManager::set_on_time_synced(WifiTimeSyncedCallback cb) {
+  _on_time_synced = std::move(cb);
+}
+
 // ---------------------------------------------------------------------------
 // HAL event handlers
 // ---------------------------------------------------------------------------
@@ -537,6 +578,12 @@ void WifiManager::_on_hal_dhcp_timeout() {
   _sta_state = WifiStaState::Disconnected;
   _retry_attempt = 0;
   _emit_disconnected(WifiDisconnectReason::dhcp_failed);
+}
+
+void WifiManager::_on_hal_time_synced(int64_t epoch_s) {
+  if (_on_time_synced) {
+    _on_time_synced(epoch_s);
+  }
 }
 
 void WifiManager::_on_hal_retry_due() {

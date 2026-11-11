@@ -88,6 +88,8 @@ public:
   WifiStatus set_power_save(WifiPowerSave) override { return WifiStatus::Ok; }
   WifiStatus start_mdns(const WifiMdnsConfig &) override { return WifiStatus::Ok; }
   WifiStatus stop_mdns() override { return WifiStatus::Ok; }
+  WifiStatus start_sntp(const WifiSntpConfig &) override { return WifiStatus::Ok; }
+  WifiStatus stop_sntp() override { return WifiStatus::Ok; }
   WifiStatus arm_dhcp_timeout(uint32_t) override { return WifiStatus::Ok; }
   WifiStatus cancel_dhcp_timeout() override { return WifiStatus::Ok; }
   WifiStatus arm_retry_timer(uint32_t) override { return WifiStatus::Ok; }
@@ -105,6 +107,7 @@ public:
   void set_on_ap_client_left(WifiApClientLeftCallback cb) override { _on_left = std::move(cb); }
   void set_on_dhcp_timeout(std::function<void()> cb) override { _on_dhcp = std::move(cb); }
   void set_on_retry_due(std::function<void()> cb) override { _on_retry = std::move(cb); }
+  void set_on_time_synced(WifiTimeSyncedCallback) override {}
 
   void fire_got_ip(uint32_t ip) {
     if (_on_got_ip) {

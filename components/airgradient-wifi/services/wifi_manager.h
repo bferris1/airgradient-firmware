@@ -17,7 +17,7 @@ class ConfigStore;
 /// High-level Wi-Fi manager. This is the product-facing API.
 ///
 /// Owns: mode state machine, connection retry with exponential backoff,
-/// mDNS profile lifecycle, disconnect reason normalisation, DHCP
+/// mDNS profile lifecycle, SNTP client lifecycle, disconnect reason normalisation, DHCP
 /// acquisition timeout policy.
 ///
 /// Pure C++ logic — host-testable when constructed with a mock WifiHal.
@@ -65,6 +65,21 @@ public:
   /// running profile intact.
   WifiStatus clear_mdns_profile();
 
+  // -- SNTP --
+
+  /// Start the SNTP client. Requires Sta or ApSta mode (InvalidState
+  /// otherwise). Idempotent while running. The client keeps running across
+  /// reconnects and re-syncs periodically (CONFIG_LWIP_SNTP_UPDATE_DELAY).
+  /// The server string is borrowed and must outlive the running client.
+  WifiStatus start_sntp(const WifiSntpConfig &config);
+
+  /// Stop the SNTP client. Idempotent while stopped. set_mode(Off) also
+  /// stops it.
+  WifiStatus stop_sntp();
+
+  /// True while the SNTP client is running.
+  bool is_sntp_running() const;
+
   /// Configure a static IP for STA connections. Persists until
   /// clear_static_ip() is called.
   WifiStatus set_static_ip(const WifiStaticIpConfig &config);
@@ -86,7 +101,7 @@ public:
 
   /// Set the Wi-Fi operating mode. All transitions are legal.
   /// Idempotent: setting the current mode returns Ok.
-  /// Setting Off tears down STA, AP, and mDNS. Manual mDNS profiles otherwise
+  /// Setting Off tears down STA, AP, SNTP, and mDNS. Manual mDNS profiles otherwise
   /// do not follow STA connection state.
   WifiStatus set_mode(WifiMode mode);
 
@@ -183,6 +198,10 @@ public:
   /// Invoked when a client leaves the soft-AP.
   void set_on_ap_client_left(WifiApClientLeftCallback cb);
 
+  /// Invoked after SNTP sets the system clock. Fires from the network
+  /// stack task, not the system event loop.
+  void set_on_time_synced(WifiTimeSyncedCallback cb);
+
   // -- Visible for tests --
 
   /// Map a raw ESP-IDF wifi_err_reason_t (int) to a normalised
@@ -207,6 +226,7 @@ private:
   void _on_hal_ap_client_left(const uint8_t mac[6]);
   void _on_hal_dhcp_timeout();
   void _on_hal_retry_due();
+  void _on_hal_time_synced(int64_t epoch_s);
 
   // -- Internal helpers --
   void _start_connect_attempt();
@@ -235,6 +255,7 @@ private:
   bool _has_mdns_profile = false;
   bool _mdns_running = false;
   uint32_t _dhcp_timeout_ms = WIFI_DEFAULT_DHCP_TIMEOUT_MS;
+  bool _sntp_running = false;
 
   // Live state
   WifiStaState _sta_state = WifiStaState::Disconnected;
@@ -259,6 +280,7 @@ private:
   WifiScanCompleteCallback _on_scan_complete;
   WifiApClientJoinedCallback _on_ap_client_joined;
   WifiApClientLeftCallback _on_ap_client_left;
+  WifiTimeSyncedCallback _on_time_synced;
 };
 
 #endif // AG_WIFI_MANAGER_H

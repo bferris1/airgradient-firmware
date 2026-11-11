@@ -25,6 +25,7 @@
 #include "common.h"
 #include "go_ble_protocol.h"
 #include "go_board.h"
+#include "go_clock.h"
 #include "go_local_api.h"
 #include "go_melody.h"
 #include "go_melody_sync.h"
@@ -842,6 +843,9 @@ void Orchestrator::dispatch(const Event &event) {
     break;
   case EventType::WifiDisconnected:
     on_wifi_disconnected(static_cast<WifiDisconnectReason>(event.wifi_disconnect_reason));
+    break;
+  case EventType::ClockSynced:
+    on_clock_synced(event.clock_epoch_s);
     break;
 
   case EventType::ProvisioningStateChanged:
@@ -2948,6 +2952,23 @@ void Orchestrator::on_wifi_connected(uint32_t ip) {
   _svc.cloud.arm(_cloud_first_post_pending);
   _cloud_first_post_pending = false;
   log_heap(TAG, "wifi.connected:after-cloud-start");
+}
+
+void Orchestrator::on_clock_synced(int64_t epoch_s) {
+  // SNTP has already applied the time; this records it for diagnostics.
+  if (!is_wall_clock_valid(epoch_s)) {
+    AG_LOGW(TAG, "Clock synced via SNTP to implausible time %" PRId64, epoch_s);
+    return;
+  }
+  const time_t t = static_cast<time_t>(epoch_s);
+  struct tm utc{};
+  char text[sizeof("YYYY-MM-DDTHH:MM:SSZ")];
+  if (gmtime_r(&t, &utc) == nullptr ||
+      strftime(text, sizeof(text), "%Y-%m-%dT%H:%M:%SZ", &utc) == 0) {
+    AG_LOGI(TAG, "Clock synced via SNTP: %" PRId64, epoch_s);
+    return;
+  }
+  AG_LOGI(TAG, "Clock synced via SNTP: %s", text);
 }
 
 void Orchestrator::on_wifi_disconnected(WifiDisconnectReason reason) {

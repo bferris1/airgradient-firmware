@@ -118,6 +118,16 @@ public:
     return WifiStatus::Ok;
   }
 
+  WifiStatus start_sntp(const WifiSntpConfig &cfg) override {
+    ++start_sntp_calls;
+    last_sntp_server = (cfg.server != nullptr) ? cfg.server : "";
+    return start_sntp_status;
+  }
+  WifiStatus stop_sntp() override {
+    ++stop_sntp_calls;
+    return WifiStatus::Ok;
+  }
+
   WifiStatus arm_dhcp_timeout(uint32_t) override { return WifiStatus::Ok; }
   WifiStatus cancel_dhcp_timeout() override { return WifiStatus::Ok; }
   WifiStatus arm_retry_timer(uint32_t) override { return WifiStatus::Ok; }
@@ -133,6 +143,7 @@ public:
   void set_on_ap_client_left(WifiApClientLeftCallback) override {}
   void set_on_dhcp_timeout(std::function<void()>) override {}
   void set_on_retry_due(std::function<void()>) override {}
+  void set_on_time_synced(WifiTimeSyncedCallback cb) override { time_synced_cb = std::move(cb); }
 
   // Observables
   int connect_calls = 0;
@@ -157,11 +168,16 @@ public:
   int stop_mdns_calls = 0;
   std::string last_mdns_hostname;
   std::vector<CapturedMdnsService> last_mdns_services;
+  WifiStatus start_sntp_status = WifiStatus::Ok;
+  int start_sntp_calls = 0;
+  int stop_sntp_calls = 0;
+  std::string last_sntp_server;
   std::vector<std::string> *call_log = nullptr;
 
   WifiConnectedCallback sta_connected_cb;
   std::function<void(int)> sta_disconnected_cb;
   WifiGotIpCallback got_ip_cb;
+  WifiTimeSyncedCallback time_synced_cb;
 
 private:
   WifiMode _mode = WifiMode::Off;
@@ -1387,4 +1403,120 @@ TEST_CASE("on_provisioning_event Started during a transport switch reports the d
   REQUIRE(evt != nullptr);
   CHECK(evt->prov.event == static_cast<uint8_t>(ProvisioningEvent::Started));
   CHECK(evt->prov.transport == static_cast<uint8_t>(ProvisioningTransport::WifiOnly));
+}
+
+// ---------------------------------------------------------------------------
+// SNTP
+// ---------------------------------------------------------------------------
+
+namespace {
+
+WifiService::Config sntp_config() {
+  WifiService::Config cfg{};
+  cfg.ntp_server = "pool.ntp.org";
+  return cfg;
+}
+
+} // namespace
+
+TEST_CASE("tick starts SNTP once after the first IP", "[go_wifi][sntp]") {
+  Fixture f(sntp_config());
+  f.seed_network();
+  f.svc.connect_with_saved_credentials();
+
+  f.svc.tick(0);
+  CHECK(f.hal.start_sntp_calls == 0); // not online yet
+
+  f.hal.got_ip_cb(0x01010101);
+  f.svc.tick(0);
+  CHECK(f.hal.start_sntp_calls == 1);
+  CHECK(f.hal.last_sntp_server == "pool.ntp.org");
+
+  // Further ticks and a reconnect's got-IP keep the running client.
+  f.svc.tick(0);
+  f.hal.got_ip_cb(0x01010101);
+  f.svc.tick(0);
+  CHECK(f.hal.start_sntp_calls == 1);
+}
+
+TEST_CASE("SNTP is not started without a configured server", "[go_wifi][sntp]") {
+  WifiService::Config cfg{};
+  cfg.ntp_server = "";
+  Fixture f(cfg);
+  f.seed_network();
+  f.svc.connect_with_saved_credentials();
+  f.hal.got_ip_cb(0x01010101);
+  f.svc.tick(0);
+  CHECK(f.hal.start_sntp_calls == 0);
+}
+
+TEST_CASE("SNTP waits for provisioning to finish", "[go_wifi][sntp]") {
+  Fixture f(sntp_config());
+  f.seed_network();
+  f.svc.connect_with_saved_credentials();
+  f.hal.got_ip_cb(0x01010101);
+  WifiServiceTestAccess::set_provisioning_active(f.svc, true);
+  f.svc.tick(0);
+  CHECK(f.hal.start_sntp_calls == 0);
+
+  WifiServiceTestAccess::set_provisioning_active(f.svc, false);
+  f.svc.tick(0);
+  CHECK(f.hal.start_sntp_calls == 1);
+}
+
+TEST_CASE("SNTP start failure is not retried until the next Stationary entry",
+          "[go_wifi][sntp]") {
+  Fixture f(sntp_config());
+  f.seed_network();
+  f.svc.connect_with_saved_credentials();
+  f.hal.got_ip_cb(0x01010101);
+  f.hal.start_sntp_status = WifiStatus::Failed;
+  f.svc.tick(0);
+  f.svc.tick(0);
+  CHECK(f.hal.start_sntp_calls == 1);
+
+  f.svc.shutdown();
+  f.hal.start_sntp_status = WifiStatus::Ok;
+  f.svc.connect_with_saved_credentials();
+  f.hal.got_ip_cb(0x01010101);
+  f.svc.tick(0);
+  CHECK(f.hal.start_sntp_calls == 2);
+}
+
+TEST_CASE("shutdown stops SNTP", "[go_wifi][sntp][shutdown]") {
+  Fixture f(sntp_config());
+  f.seed_network();
+  f.svc.connect_with_saved_credentials();
+  f.hal.got_ip_cb(0x01010101);
+  f.svc.tick(0);
+  REQUIRE(f.wifi.is_sntp_running());
+
+  f.svc.shutdown();
+  CHECK(f.hal.stop_sntp_calls == 1);
+  CHECK_FALSE(f.wifi.is_sntp_running());
+}
+
+TEST_CASE("SNTP sync posts ClockSynced without blocking", "[go_wifi][sntp][callbacks]") {
+  Fixture f(sntp_config());
+  f.seed_network();
+  f.svc.connect_with_saved_credentials();
+  REQUIRE(f.hal.time_synced_cb);
+
+  f.hal.time_synced_cb(1762819200);
+
+  const Event *evt = f.rtos.first_event(EventType::ClockSynced);
+  REQUIRE(evt != nullptr);
+  CHECK(evt->clock_epoch_s == 1762819200);
+  CHECK(f.rtos.last_queue_send_timeout_ms == 0);
+}
+
+TEST_CASE("SNTP sync after shutdown posts nothing", "[go_wifi][sntp][shutdown]") {
+  Fixture f(sntp_config());
+  f.seed_network();
+  f.svc.connect_with_saved_credentials();
+  f.svc.shutdown();
+  REQUIRE(f.hal.time_synced_cb); // manager stays attached to the HAL
+
+  f.hal.time_synced_cb(1762819200);
+  CHECK(f.rtos.first_event(EventType::ClockSynced) == nullptr);
 }

@@ -22,4 +22,13 @@ menu "AirGradient Go"
             forces an fflush + fsync. Bounds worst-case data loss on a
             power cut. Lower = safer; higher = less NAND wear.
 
+    config GO_SNTP_SERVER
+        string "Stationary mode SNTP server"
+        default "pool.ntp.org"
+        help
+            NTP server used to set the system clock while the device is
+            online in Stationary mode. The clock then carries over to
+            Portable mode, so route points recorded before the first GPS fix
+            get a real timestamp. Leave empty to disable SNTP.
+
 endmenu

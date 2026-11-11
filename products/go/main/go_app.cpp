@@ -123,6 +123,7 @@ WifiService::Config make_wifi_service_config(const StationaryStrings &s, const c
   cfg.model = STATIONARY_AGO_MODEL_CODE;
   cfg.hostname = s.hostname.c_str();
   cfg.http_port = CONFIG_AG_HTTP_PORT;
+  cfg.ntp_server = CONFIG_GO_SNTP_SERVER;
   return cfg;
 }
 

@@ -383,6 +383,7 @@ void WifiService::shutdown() {
   _wifi.set_mode(WifiMode::Off);
   _detach_wifi_callbacks();
   _reset_online_latches();
+  _sntp_start_failed = false;
 }
 
 void WifiService::clear_credentials() {
@@ -452,6 +453,8 @@ void WifiService::tick(uint32_t now_ms) {
     }
   }
 
+  _start_sntp_if_due();
+
   if (_reconnect_at_ms != 0 && now_ms >= _reconnect_at_ms) {
     _reconnect_at_ms = 0;
     // Keep has_been_online() latched (stay "runtime") and skip the connect
@@ -474,11 +477,13 @@ void WifiService::tick(uint32_t now_ms) {
 void WifiService::_install_wifi_callbacks() {
   _wifi.set_on_got_ip([this](uint32_t ip) { _on_got_ip(ip); });
   _wifi.set_on_disconnected([this](WifiDisconnectReason r) { _on_disconnected(r); });
+  _wifi.set_on_time_synced([this](int64_t epoch_s) { _on_time_synced(epoch_s); });
 }
 
 void WifiService::_detach_wifi_callbacks() {
   _wifi.set_on_got_ip(nullptr);
   _wifi.set_on_disconnected(nullptr);
+  _wifi.set_on_time_synced(nullptr);
 }
 
 void WifiService::_on_got_ip(uint32_t ip) {
@@ -504,6 +509,33 @@ void WifiService::_on_disconnected(WifiDisconnectReason reason) {
     return; // synthetic teardown reason; not an external failure
   }
   _post_wifi_disconnected(reason);
+}
+
+void WifiService::_on_time_synced(int64_t epoch_s) {
+  // Network stack task context: post only, never block.
+  Event evt{};
+  evt.type = EventType::ClockSynced;
+  evt.clock_epoch_s = epoch_s;
+  if (!RTOS::queue_send(_event_queue, &evt, 0)) {
+    AG_LOGW(TAG, "clock synced event dropped (queue full)");
+  }
+}
+
+void WifiService::_start_sntp_if_due() {
+  // Provisioning owns the link until it hands over; start once it is done.
+  if (_cfg.ntp_server == nullptr || _cfg.ntp_server[0] == '\0' || _sntp_start_failed ||
+      !_online.load() || _provisioning_active || _wifi.is_sntp_running()) {
+    return;
+  }
+  WifiSntpConfig sntp{};
+  sntp.server = _cfg.ntp_server;
+  const WifiStatus status = _wifi.start_sntp(sntp);
+  if (status != WifiStatus::Ok) {
+    _sntp_start_failed = true;
+    AG_LOGW(TAG, "SNTP start failed: %d", static_cast<int>(status));
+    return;
+  }
+  AG_LOGI(TAG, "SNTP started: server=%s", _cfg.ntp_server);
 }
 
 void WifiService::_reset_deadline() {

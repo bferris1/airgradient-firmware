@@ -305,6 +305,7 @@ Events are dispatched by type:
 | `Co2CalibrationDone` | Show result snackbar, notify BLE command result, update display |
 | `WifiConnected` | `on_wifi_connected()` — bring-up success (`Connected!\n<ip>` on Info then leave to Home), or post-online reconnect snackbar on Home; unconditionally `cloud.start()` + `cloud.arm()` |
 | `WifiDisconnected` | `on_wifi_disconnected()` — `cloud.disarm()` then disconnect-policy router. Before first online, connectivity failures open provisioning; after first online, every reason except `requested_by_user` requests reconnect. |
+| `ClockSynced` | `on_clock_synced()` — logs the SNTP-applied UTC time (`Clock synced via SNTP: <ISO 8601>`), or warns if it is before `GO_MIN_VALID_EPOCH_S`. The clock itself is already set. |
 | `ProvisioningStateChanged` | `on_provisioning_state_changed()` — update Provisioning page state, persist connectivity metadata (coercing `Cloud` control to `Local` when cloud is disabled), hand the listener to the local endpoint, then start/arm cloud; fall back to Portable on `Stopped` without prior online |
 | `PostMeasuresResult` | Log-only (result code) |
 | `WifiOtaAvailable` | `on_wifi_ota_available()` — recheck eligibility, run the blocking Wi-Fi download, then reboot or resume |
