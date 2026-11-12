@@ -232,6 +232,7 @@ extern bool ota_run_wifi_invoke_download_started;
 
 // --- WifiService ---
 extern bool wifi_has_saved_networks;
+extern int wifi_has_saved_networks_calls;
 extern bool wifi_connect_saved_called;
 extern WifiStaticIpConfig wifi_last_static_ip;
 extern bool wifi_static_ip_was_null;
@@ -13443,4 +13444,106 @@ TEST_CASE("USB auto mode: unplug during Wi-Fi bring-up closes the session and ca
   f.poll(orch, BmsPowerSource::UsbDcp);
   CHECK(A::mode(orch) == OperatingMode::Stationary);
   CHECK(A::usb_auto_active(orch));
+}
+
+TEST_CASE("USB auto mode: hardware test screens hold the switch",
+          "[Orchestrator][usb_auto_mode]") {
+  UsbAutoFixture f;
+  auto orch = f.make_orchestrator();
+  CP2_ALLOW_CONFIG_WRITES(f);
+  f.poll(orch, BmsPowerSource::None);
+
+  Screen screen = Screen::GpsTest;
+  SECTION("GPS test") { screen = Screen::GpsTest; }
+  SECTION("Accelerometer test") { screen = Screen::AccelTest; }
+  SECTION("Hardware test menu") { screen = Screen::HardwareTest; }
+  f.ui_manager.set_screen(screen);
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  CHECK(A::mode(orch) == OperatingMode::Portable);
+  CHECK(f.ui_manager.current_screen() == screen);
+
+  // Leaving the test releases the held switch on the next poll.
+  f.ui_manager.reset_to_home();
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  CHECK(A::mode(orch) == OperatingMode::Stationary);
+}
+
+TEST_CASE("USB auto mode: unknown charger readings do not count as an unplug",
+          "[Orchestrator][usb_auto_mode]") {
+  UsbAutoFixture f;
+  auto orch = f.make_orchestrator();
+  CP2_ALLOW_CONFIG_WRITES(f);
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  REQUIRE(A::mode(orch) == OperatingMode::Stationary);
+
+  f.poll(orch, BmsPowerSource::Unknown);
+  f.poll(orch, BmsPowerSource::Unknown);
+  f.poll(orch, BmsPowerSource::Unknown);
+  CHECK(A::mode(orch) == OperatingMode::Stationary);
+  CHECK(A::usb_auto_active(orch));
+
+  // A real unplug afterwards still returns to Portable.
+  f.poll(orch, BmsPowerSource::None);
+  f.poll(orch, BmsPowerSource::None);
+  CHECK(A::mode(orch) == OperatingMode::Portable);
+}
+
+TEST_CASE("USB auto mode: a rejected manual mode change keeps automatic ownership",
+          "[Orchestrator][usb_auto_mode]") {
+  UsbAutoFixture f;
+  auto orch = f.make_orchestrator();
+  CP2_ALLOW_CONFIG_WRITES(f);
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  REQUIRE(A::usb_auto_active(orch));
+
+  ALLOW_CALL(f.mock_config, commit()).RETURN(ConfigStoreResult::ERROR);
+  GoSettings candidate = A::settings(orch);
+  candidate.operating_mode = OperatingMode::Portable;
+  candidate.buzzer_enabled = !candidate.buzzer_enabled;
+  REQUIRE_FALSE(A::activate_settings_candidate(orch, candidate));
+
+  CHECK(A::mode(orch) == OperatingMode::Stationary);
+  CHECK(A::usb_auto_active(orch));
+}
+
+TEST_CASE("USB auto mode: unplug during bring-up does not save settings",
+          "[Orchestrator][usb_auto_mode]") {
+  UsbAutoFixture f;
+  f.settings.auto_lock_seconds = 10;
+  auto orch = f.make_orchestrator();
+  CP2_ALLOW_CONFIG_WRITES(f);
+  uint32_t now_ms = 1000;
+  ALLOW_CALL(f.mock_rtos, get_time_ms_impl()).LR_RETURN(now_ms);
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  REQUIRE(A::setup_session_active(orch));
+
+  int commits = 0;
+  ALLOW_CALL(f.mock_config, commit()).LR_SIDE_EFFECT(++commits).RETURN(ConfigStoreResult::OK);
+  now_ms = 60'000; // well past the auto-lock window since the session began
+  f.poll(orch, BmsPowerSource::None);
+  f.poll(orch, BmsPowerSource::None);
+
+  CHECK(A::mode(orch) == OperatingMode::Portable);
+  CHECK_FALSE(A::setup_session_active(orch));
+  CHECK(commits == 0);
+  // The inactivity window restarts, so auto-lock does not fire at once.
+  CHECK(A::last_input_ms(orch) == now_ms);
+  A::check_timers(orch);
+  CHECK(A::lock_state(orch) == LockState::Unlocked);
+}
+
+TEST_CASE("USB auto mode: saved networks are only read when a switch is possible",
+          "[Orchestrator][usb_auto_mode]") {
+  UsbAutoFixture f;
+  auto orch = f.make_orchestrator();
+  CP2_ALLOW_CONFIG_WRITES(f);
+  test_spy::wifi_has_saved_networks_calls = 0;
+  f.poll(orch, BmsPowerSource::None);
+  f.poll(orch, BmsPowerSource::None);
+  CHECK(test_spy::wifi_has_saved_networks_calls == 0);
+
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  CHECK(test_spy::wifi_has_saved_networks_calls > 0);
 }

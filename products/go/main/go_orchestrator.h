@@ -426,7 +426,7 @@ private:
   /// with a drop-free wait=true render + flush() so the leaving frame is
   /// painted before the helper returns.
   void leave_session_to_home();
-  void leave_session_to_portable();
+  void leave_session_to_portable(bool persist = true);
 
   /// Rebase the sensor measurement / BMS / BMS-status deadlines to now,
   /// so post-resume timers do not fire back-to-back catching up on

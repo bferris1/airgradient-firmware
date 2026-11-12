@@ -53,6 +53,8 @@ public:
 
   UsbAutoModeAction update(const UsbAutoModeInputs &in) {
     const PowerEdge edge = debounce(in.external_power);
+    const bool enabled_now = in.enabled && !_prev_enabled;
+    _prev_enabled = in.enabled;
 
     if (edge == PowerEdge::Removed) {
       _armed = false;
@@ -62,17 +64,18 @@ public:
           return UsbAutoModeAction::ReturnPortable;
         }
       }
-      _prev_enabled = in.enabled;
       return UsbAutoModeAction::None;
     }
 
-    if (edge == PowerEdge::Inserted || (in.enabled && !_prev_enabled && _stable_external)) {
+    if (edge == PowerEdge::Inserted || (enabled_now && _stable_external)) {
       _armed = true;
     }
-    _prev_enabled = in.enabled;
 
-    if (in.enabled && _armed && _stable_external && in.mode == OperatingMode::Portable &&
-        !in.tracking_active && in.has_saved_networks && in.can_switch) {
+    // in.external_power too: a pending unplug sample keeps _stable_external
+    // set, and entering then would bounce back once the unplug settles.
+    if (in.enabled && _armed && _stable_external && in.external_power &&
+        in.mode == OperatingMode::Portable && !in.tracking_active && in.has_saved_networks &&
+        in.can_switch) {
       _armed = false;
       _auto_active = true;
       return UsbAutoModeAction::EnterStationary;

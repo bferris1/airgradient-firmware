@@ -1464,7 +1464,7 @@ TEST_CASE("SNTP waits for provisioning to finish", "[go_wifi][sntp]") {
   CHECK(f.hal.start_sntp_calls == 1);
 }
 
-TEST_CASE("SNTP start failure is not retried until the next Stationary entry",
+TEST_CASE("SNTP start failure is not retried until a new IP or Stationary entry",
           "[go_wifi][sntp]") {
   Fixture f(sntp_config());
   f.seed_network();
@@ -1481,6 +1481,24 @@ TEST_CASE("SNTP start failure is not retried until the next Stationary entry",
   f.hal.got_ip_cb(0x01010101);
   f.svc.tick(0);
   CHECK(f.hal.start_sntp_calls == 2);
+}
+
+TEST_CASE("SNTP start failure is retried after the next IP", "[go_wifi][sntp]") {
+  Fixture f(sntp_config());
+  f.seed_network();
+  f.svc.connect_with_saved_credentials();
+  f.hal.got_ip_cb(0x01010101);
+  f.hal.start_sntp_status = WifiStatus::Failed;
+  f.svc.tick(0);
+  f.svc.tick(0);
+  REQUIRE(f.hal.start_sntp_calls == 1);
+
+  // A runtime reconnect (no shutdown) lifts the latch on its got-IP.
+  f.hal.start_sntp_status = WifiStatus::Ok;
+  f.hal.got_ip_cb(0x01010101);
+  f.svc.tick(0);
+  CHECK(f.hal.start_sntp_calls == 2);
+  CHECK(f.wifi.is_sntp_running());
 }
 
 TEST_CASE("shutdown stops SNTP", "[go_wifi][sntp][shutdown]") {

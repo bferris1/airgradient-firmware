@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "rev": "1f9d7f3",
+  "rev": "981f7cb",
   "product": {
     "slug": "airgradient-go",
     "name": "AirGradient Go",
@@ -2034,26 +2034,27 @@
         "Go has saved credentials for a test Wi-Fi network with internet access.",
         "A USB data cable.",
         "A computer with access to the AirGradient logging tool.",
-        "A phone with the AirGradient app able to download tracked routes, kept closed or disconnected from Go until the download step."
+        "USB Auto Mode is Off.",
+        "A phone with the AirGradient app able to download tracked routes."
       ],
       "steps": [
         {
-          "action": "Record the current mode and measurement interval, and record GPS in Settings > Operations. Select Stationary mode, set the measurement interval to 10 seconds, and set GPS to Always Off. Disconnect USB and return Home.",
-          "expected_result": "The original mode, interval, and GPS setting are recorded. Stationary is selected with a 10-second interval and GPS Always Off."
+          "action": "Record the current mode and measurement interval, and record GPS in Settings > Operations. Select Portable mode, set the measurement interval to 10 seconds, and set GPS to Always Off. Disconnect USB and return Home.",
+          "expected_result": "The original mode, interval, and GPS setting are recorded. Portable is selected with a 10-second interval and GPS Always Off."
         },
         {
           "action": "Hold Power until Powered off is fully displayed. Keep holding until Getting Ready appears, allowing up to 30 seconds, then release Power.",
           "expected_result": "Go shows Powered off followed by Getting Ready."
         },
         {
-          "action": "Connect USB and open the AirGradient logging tool. Allow up to two minutes after Home shows the connected Wi-Fi icon, watching for a Clock synced via SNTP entry.",
+          "action": "Connect USB and open the AirGradient logging tool. Select Stationary mode, then allow up to two minutes after Home shows the connected Wi-Fi icon, watching for a Clock synced via SNTP entry.",
           "expected_result": "A Clock synced via SNTP entry shows the current UTC date and time, within one minute of the phone.",
           "evidence": [
             "Save the Clock synced via SNTP log line."
           ]
         },
         {
-          "action": "Select Portable mode. Return Home, then select Main Menu > Start Tracking. Record the phone's current time, wait two minutes, then select Main Menu > Tracking > Stop Tracking.",
+          "action": "Keep the AirGradient app closed or disconnected from Go. Select Portable mode. Return Home, then select Main Menu > Start Tracking. Record the phone's current time, wait two minutes, then select Main Menu > Tracking > Stop Tracking.",
           "expected_result": "Tracking starts and stops with readable messages. No Bluetooth app was connected during the session."
         },
         {

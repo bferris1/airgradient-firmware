@@ -581,16 +581,21 @@ decision from `UsbAutoMode` (`go_usb_auto_mode.h`):
 
 - A power change must hold for two consecutive polls, so a brief rail drop on
   unplug does not flip the mode. Booting on USB, or turning the setting on while
-  plugged in, counts as a plug-in.
+  plugged in, counts as a plug-in. A poll with an unknown power source (failed
+  charger read) is skipped, so read errors never look like an unplug.
 - The switch to Stationary waits while a route is tracked or paused, a BLE
-  client is connected, no Wi-Fi network is saved, onboarding is incomplete, or
-  a setup session, boot splash, peripheral test, or manufacturing flow is
-  active. It fires once those clear if USB is still present.
+  client is connected, no Wi-Fi network is saved, onboarding is incomplete, a
+  hardware test screen is open, or a setup session, boot splash, or
+  manufacturing flow is active. It fires once those clear if USB is still
+  present, and never on a poll that already reads battery power.
+- The saved-network check reads NVS, so it runs only when the setting is on,
+  the mode is Portable, and USB is present.
 - Only Portable switches automatically. Unplugging returns to Portable only
   when the automatic switch entered Stationary; a Stationary chosen by the user
   stays.
 - Any other mode change (device menu, BLE, local API, or cloud) hands control
-  back to the user until the next plug-in.
+  back to the user until the next plug-in, once the change is saved. A rejected
+  save leaves the automatic switch in charge.
 
 The automatic mode change is not persisted. While it is active,
 `activate_settings_candidate()` saves `Portable` as the stored mode, so other
@@ -603,7 +608,9 @@ does not retry until the next plug-in.
 
 Automatic returns to Portable during the Stationary setup session (for example
 an unplug while "Connecting to saved Wi-Fi..." is shown) go through
-`leave_session_to_portable()`, so the session closes and Home is restored.
+`leave_session_to_portable(/*persist=*/false)`, so the session closes and Home
+is restored without a settings write. The helper restarts the inactivity window
+so auto-lock does not fire the moment the session gate clears.
 Entering Stationary silently unlocks the device, as any Stationary entry does.
 
 ### apply_settings_change()

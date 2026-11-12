@@ -206,6 +206,7 @@ MeasuresAGo cloud_last_snapshot{};
 
 // --- WifiService ---
 bool wifi_has_saved_networks = false;
+int wifi_has_saved_networks_calls = 0;
 bool wifi_connect_saved_called = false;
 WifiStaticIpConfig wifi_last_static_ip{};
 bool wifi_static_ip_was_null = false;
@@ -427,6 +428,7 @@ void reset() {
   cloud_last_snapshot = MeasuresAGo{};
 
   wifi_has_saved_networks = false;
+  wifi_has_saved_networks_calls = 0;
   wifi_connect_saved_called = false;
   wifi_last_static_ip = WifiStaticIpConfig{};
   wifi_static_ip_was_null = false;
@@ -1102,7 +1104,10 @@ WifiService::WifiService(RtosQueueHandle event_queue, const Deps &deps, const Co
 
 WifiService::~WifiService() = default;
 
-bool WifiService::has_saved_networks() const { return test_spy::wifi_has_saved_networks; }
+bool WifiService::has_saved_networks() const {
+  ++test_spy::wifi_has_saved_networks_calls;
+  return test_spy::wifi_has_saved_networks;
+}
 
 void WifiService::set_power_save_enabled(bool enabled) {
   _power_save_enabled = enabled;

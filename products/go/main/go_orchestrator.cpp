@@ -711,16 +711,26 @@ void Orchestrator::on_bms_status_timer() {
 }
 
 void Orchestrator::update_usb_auto_mode() {
+  // A failed charger read leaves the source Unknown; feeding that into the
+  // debounce would read as an unplug. Skip the sample instead.
+  if (!_latest_power.charger_status.is_power_source_valid()) {
+    return;
+  }
   UsbAutoModeInputs in{};
   in.enabled = _settings.auto_mode_on_usb;
   in.external_power =
       bms_power_source_has_external_input(_latest_power.charger_status.power_source);
   in.mode = _mode;
   in.tracking_active = tracking_session_active(_tracking_state);
-  in.has_saved_networks = _svc.wifi.has_saved_networks();
+  // Only consulted for an entry; skip the credential-store read otherwise.
+  in.has_saved_networks = in.enabled && in.external_power && in.mode == OperatingMode::Portable &&
+                          _svc.wifi.has_saved_networks();
   // Hold the switch while another flow owns the device or a phone is connected.
+  // Hardware test screens run their own teardown on exit, which a switch
+  // would skip.
   in.can_switch = _settings.onboarding_done && !_setup_session_active && !_manufacturing_mode &&
-                  !_boot_splash_active && !_periph.active && !_svc.ble_service.is_connected();
+                  !_boot_splash_active && !_periph.active &&
+                  !_svc.ui_manager.is_hardware_test_screen() && !_svc.ble_service.is_connected();
 
   const UsbAutoModeAction action = _usb_auto_mode.update(in);
   if (action == UsbAutoModeAction::None) {
@@ -743,8 +753,9 @@ void Orchestrator::apply_usb_auto_mode(OperatingMode target) {
   _applying_usb_auto_mode = true;
   if (target == OperatingMode::Portable && _setup_session_active) {
     // Leaving during Stationary bring-up must also close the setup session,
-    // or the Info screen and session gate would outlive Stationary.
-    leave_session_to_portable();
+    // or the Info screen and session gate would outlive Stationary. Not
+    // persisted, matching the branch below.
+    leave_session_to_portable(/*persist=*/false);
   } else {
     // Not persisted: the saved mode stays Portable, so a reboot on USB
     // repeats the switch and a reboot on battery stays Portable.
@@ -2240,18 +2251,20 @@ bool Orchestrator::activate_settings_candidate(const GoSettings &candidate, bool
   if (!settings_changed && candidate.operating_mode == previous_mode && !force_persist) {
     return true;
   }
-  const bool mode_changing = candidate.operating_mode != previous_mode;
-  if (mode_changing && !_applying_usb_auto_mode) {
-    _usb_auto_mode.on_manual_mode_change();
-  }
+  const bool manual_mode_change =
+      candidate.operating_mode != previous_mode && !_applying_usb_auto_mode;
   // An automatic Stationary is never saved; the stored mode stays Portable.
   GoSettings to_save = candidate;
-  if (_usb_auto_mode.auto_active() && to_save.operating_mode == OperatingMode::Stationary) {
+  if (_usb_auto_mode.auto_active() && !manual_mode_change &&
+      to_save.operating_mode == OperatingMode::Stationary) {
     to_save.operating_mode = OperatingMode::Portable;
   }
   if (persist && (settings_changed || force_persist) &&
       !save_go_settings(_config_store, to_save)) {
-    return false;
+    return false; // rejected: keep automatic ownership with the unchanged mode
+  }
+  if (manual_mode_change) {
+    _usb_auto_mode.on_manual_mode_change();
   }
 
   if (!settings_changed && candidate.operating_mode == previous_mode) {
@@ -2937,7 +2950,7 @@ void Orchestrator::leave_session_to_home() {
   _svc.display_service.flush(); // paint completes before caller returns
 }
 
-void Orchestrator::leave_session_to_portable() {
+void Orchestrator::leave_session_to_portable(bool persist) {
   AG_LOGI(TAG, "leave_session_to_portable");
   _svc.ui_manager.set_provisioning_connected(0);
   // reset_to_home() first so change_mode()'s update_display() and the
@@ -2952,8 +2965,11 @@ void Orchestrator::leave_session_to_portable() {
   // background-render path that fires mid-teardown (resume's immediate
   // measurement, a stray BLE event during init_ble_if_portable()) still
   // no-ops through the suppression gate.
-  change_mode(OperatingMode::Portable);
+  change_mode(OperatingMode::Portable, persist);
   rebase_periodic_clocks();
+  // Restart the inactivity window: auto-lock was held during the session, so
+  // a stale input time would lock at once and hide the mode-change notice.
+  _last_input_ms = static_cast<uint32_t>(RTOS::get_time_ms());
 
   _setup_session_active = false; // gate cleared after teardown completes
   update_display(/*wait=*/true); // rescues any drop from change_mode's render

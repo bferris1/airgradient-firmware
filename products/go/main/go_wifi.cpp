@@ -384,6 +384,7 @@ void WifiService::shutdown() {
   _detach_wifi_callbacks();
   _reset_online_latches();
   _sntp_start_failed = false;
+  _sntp_retry_pending.store(false);
 }
 
 void WifiService::clear_credentials() {
@@ -444,6 +445,10 @@ void WifiService::tick(uint32_t now_ms) {
   if (_clear_deadline_pending.exchange(false)) {
     _initial_connect_deadline_ms = 0;
   }
+  // A new IP lifts an earlier SNTP start failure (kept off the latch writer).
+  if (_sntp_retry_pending.exchange(false)) {
+    _sntp_start_failed = false;
+  }
 
   if (_initial_connect_deadline_ms != 0 && now_ms >= _initial_connect_deadline_ms) {
     // Keep the deadline due until admitted so queue pressure cannot strand setup.
@@ -493,6 +498,7 @@ void WifiService::_on_got_ip(uint32_t ip) {
   _has_been_online.store(true);
   // Defer deadline clear to tick() so deadline stays single-writer.
   _clear_deadline_pending.store(true);
+  _sntp_retry_pending.store(true);
   _rssi.store(_wifi.status_snapshot().rssi);
 
   Event evt{};

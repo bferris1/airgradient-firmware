@@ -173,3 +173,30 @@ TEST_CASE("unreachable Wi-Fi is not retried until the next plug-in", "[usb_auto_
   settle(m, ready(false));
   CHECK(settle(m, ready(true)) == UsbAutoModeAction::EnterStationary);
 }
+
+TEST_CASE("a held switch does not fire on the first unplug sample", "[usb_auto_mode]") {
+  UsbAutoMode m;
+  m.update(ready(false));
+  UsbAutoModeInputs held = ready(true);
+  held.tracking_active = true;
+  REQUIRE(settle(m, held) == UsbAutoModeAction::None);
+
+  // Tracking stops just as USB is pulled: the pending unplug must not enter.
+  CHECK(m.update(ready(false)) == UsbAutoModeAction::None);
+  CHECK(m.update(ready(false)) == UsbAutoModeAction::None);
+  CHECK_FALSE(m.auto_active());
+}
+
+TEST_CASE("enabling the setting on an unplug edge still records it", "[usb_auto_mode]") {
+  UsbAutoMode m;
+  UsbAutoModeInputs off = ready(true);
+  off.enabled = false;
+  m.update(ready(false));
+  settle(m, off);
+
+  // Enabled on the sample that completes the unplug: nothing to arm.
+  m.update(ready(false));
+  REQUIRE(m.update(ready(false)) == UsbAutoModeAction::None);
+  // A later plug-in arms and switches as usual.
+  CHECK(settle(m, ready(true)) == UsbAutoModeAction::EnterStationary);
+}

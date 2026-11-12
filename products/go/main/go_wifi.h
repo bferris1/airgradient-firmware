@@ -232,8 +232,11 @@ private:
   std::atomic<bool> _clear_deadline_pending{false};
 
   // Latched on an SNTP start failure so tick() does not retry (and log) every
-  // loop. Cleared by shutdown(), so the next Stationary entry tries again.
+  // loop. Cleared by shutdown() and on each new IP (via _sntp_retry_pending,
+  // set by the on_got_ip adapter and consumed by tick()), so a transient
+  // failure is retried on the next connect.
   bool _sntp_start_failed = false;
+  std::atomic<bool> _sntp_retry_pending{false};
 
   // Runtime reconnect timer (single-writer, orchestrator task): armed by
   // schedule_reconnect(), fired/cleared by tick(). Carries the static IP to

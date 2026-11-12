@@ -326,8 +326,9 @@ client keeps running across reconnects and re-syncs hourly
 (`CONFIG_LWIP_SNTP_UPDATE_DELAY`). `shutdown()` sets Wi-Fi mode `Off`, which
 stops it, so SNTP never runs alongside GPS in Portable.
 
-A start failure is logged once and latched until `shutdown()`, so the next
-Stationary entry retries. The clock does not survive the Energy Saving power
+A start failure is logged once and latched until the next got-IP or
+`shutdown()`, so a reconnect or the next Stationary entry retries. The got-IP
+callback only sets an atomic flag; `tick()` clears the latch. The clock does not survive the Energy Saving power
 reset or a full power loss; GPS, SNTP, or BLE aiding sets it again afterwards.
 
 ### Provisioning Start
@@ -584,8 +585,9 @@ in `products/go/tests/go_wifi.tests.cpp` and cover:
   `next_deadline_ms()` returns the nearer of the two timers.
 - Shutdown path (detaches callbacks, zeroes latches, sets mode `Off`).
 - SNTP: starts once after the first IP, waits for provisioning to finish,
-  stays off without a server, latches a start failure until `shutdown()`,
-  stops on `shutdown()`, and posts `ClockSynced` without blocking.
+  stays off without a server, latches a start failure until a new IP or
+  `shutdown()`, stops on `shutdown()`, and posts `ClockSynced` without
+  blocking.
 
 The orchestrator tests in `products/go/tests/go_orchestrator.tests.cpp`
 drive the higher-level mode policy against a stubbed `WifiService`, including
