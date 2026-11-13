@@ -1974,7 +1974,7 @@ void UIManager::populate_settings_group_rows(DisplayValues &v) const {
       (void)snprintf(label, sizeof(label), "Buzzer: %s", BUZZER_OPTIONS[_setting_buzzer_volume]);
       break;
     case SettingId::UsbAutoMode:
-      (void)snprintf(label, sizeof(label), "USB Auto Mode: %s",
+      (void)snprintf(label, sizeof(label), "Dock Mode: %s",
                      USB_AUTO_MODE_OPTIONS[_setting_usb_auto_mode]);
       break;
     case SettingId::LocalServer:

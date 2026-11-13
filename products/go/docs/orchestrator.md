@@ -572,11 +572,11 @@ A WiFi OTA check can never be in flight at the moment of leaving Stationary —
 the leave handler only runs when the loop is not blocked. See
 [Firmware Update (OTA)](#firmware-update-ota).
 
-### USB Auto Mode
+### Dock Mode
 
-When `GoSettings::auto_mode_on_usb` is on, plugging in USB switches Portable to
-Stationary and unplugging switches back. `update_usb_auto_mode()` runs after
-every charger status poll (`BMS_STATUS_POLL_INTERVAL_MS`, 5 s) and applies the
+When Dock Mode (`GoSettings::auto_mode_on_usb`) is on, plugging in USB switches
+Portable to Stationary and unplugging switches back. `update_usb_auto_mode()`
+runs after every charger status poll (`BMS_STATUS_POLL_INTERVAL_MS`, 5 s) and applies the
 decision from `UsbAutoMode` (`go_usb_auto_mode.h`):
 
 - A power change must hold for two consecutive polls, so a brief rail drop on

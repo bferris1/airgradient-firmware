@@ -44,7 +44,7 @@ See [`go_settings.h`](../main/go_settings.h) for full signatures.
 | `pinned_chart` | `"pchart"` | `int` (stored) / `Metric` (in struct) | `Pm25` (1) | 0 .. 8 | Pinned Chart choice shared by UI, BLE, and Local Server; None (0) disables the automatic chart |
 | `gps_mode` | `"gpm"` | `int` (stored) / `GpsMode` (in struct) | `OnWhenTracking` (1) | 0 .. 2 | GPS operating mode: AlwaysOff / OnWhenTracking / AlwaysOn |
 | `operating_mode` | `"opm"` | `int` (stored) / `OperatingMode` (in struct) | `Portable` (0) | 0 .. 2 | Serialized as int; cast to `OperatingMode` on load |
-| `auto_mode_on_usb` | `"aum"` | `bool` | `false` | — | USB Auto Mode: switch Portable to Stationary on USB power and back on unplug. Device UI only (Operations). See [USB Auto Mode](orchestrator.md#usb-auto-mode). |
+| `auto_mode_on_usb` | `"aum"` | `bool` | `false` | — | Dock Mode: switch Portable to Stationary on USB power and back on unplug. Device UI only (Operations). See [Dock Mode](orchestrator.md#dock-mode). |
 | `auto_lock_seconds` | `"als"` | `int` | `10` | 0, 10, 30, 60 | Runtime auto-lock timeout; `0` = disabled |
 | `disable_cloud` | `"dc"` | `bool` | `false` | — | Outbound cloud transport kill switch. Suppresses POST, FETCH, and Stationary OTA checks; does not disable the local API. |
 | `local_server_enabled` | `"lsrv"` | `bool` | `true` | — | Local API and discovery; editable through Operations in Stationary only. |

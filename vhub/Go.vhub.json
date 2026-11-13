@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "rev": "981f7cb",
+  "rev": "f1ac35e",
   "product": {
     "slug": "airgradient-go",
     "name": "AirGradient Go",
@@ -2034,7 +2034,7 @@
         "Go has saved credentials for a test Wi-Fi network with internet access.",
         "A USB data cable.",
         "A computer with access to the AirGradient logging tool.",
-        "USB Auto Mode is Off.",
+        "Settings > Operations > Dock Mode is Off.",
         "A phone with the AirGradient app able to download tracked routes."
       ],
       "steps": [
@@ -2582,8 +2582,8 @@
     },
     {
       "id": "go.modes.usb-auto",
-      "title": "USB Auto Mode switches between Portable and Stationary on USB power",
-      "objective": "Verify that with USB Auto Mode on, plugging in USB enters Stationary and unplugging returns to Portable, without overriding a manual mode choice or interrupting a tracked route.",
+      "title": "Dock Mode enters Stationary on USB power and returns to Portable on unplug",
+      "objective": "Verify that with the Dock Mode setting On, plugging in USB enters Stationary and unplugging returns to Portable, without overriding a manual mode choice or interrupting a tracked route.",
       "category": "Modes & Sleep",
       "sub_category": "Mode Transitions",
       "applicability": [
@@ -2597,8 +2597,8 @@
       ],
       "steps": [
         {
-          "action": "Disconnect USB. Record the current operating mode and Settings > Operations > USB Auto Mode. Select Portable mode, set USB Auto Mode to On, and return Home.",
-          "expected_result": "The original mode and setting are recorded. Go is in Portable with USB Auto Mode On."
+          "action": "Disconnect USB. Record the current operating mode and Settings > Operations > Dock Mode. Select Portable mode, set Dock Mode to On, and return Home.",
+          "expected_result": "The original mode and setting are recorded. Go is in Portable with Dock Mode On."
         },
         {
           "action": "Connect USB. Watch Go for up to 45 seconds.",
@@ -2626,7 +2626,7 @@
         }
       ],
       "cleanup": [
-        "Stop tracking if it is still running. Restore the recorded USB Auto Mode setting and operating mode, including after interruption.",
+        "Stop tracking if it is still running. Restore the recorded Dock Mode setting and operating mode, including after interruption.",
         "Disconnect USB and return Go Home; record any restoration failure."
       ],
       "references": [
