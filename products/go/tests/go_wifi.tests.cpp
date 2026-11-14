@@ -1528,6 +1528,23 @@ TEST_CASE("SNTP sync posts ClockSynced without blocking", "[go_wifi][sntp][callb
   CHECK(f.rtos.last_queue_send_timeout_ms == 0);
 }
 
+TEST_CASE("SNTP sync still posts after a reconnect while SNTP runs",
+          "[go_wifi][sntp][callbacks]") {
+  Fixture f(sntp_config());
+  f.seed_network();
+  f.svc.connect_with_saved_credentials();
+  f.hal.got_ip_cb(0x01010101);
+  f.svc.tick(0);
+  REQUIRE(f.wifi.is_sntp_running());
+
+  // Reconnect reinstalls the link callbacks but keeps the running sync slot.
+  f.svc.connect_with_saved_credentials();
+  f.hal.time_synced_cb(1762819200);
+  const Event *evt = f.rtos.first_event(EventType::ClockSynced);
+  REQUIRE(evt != nullptr);
+  CHECK(evt->clock_epoch_s == 1762819200);
+}
+
 TEST_CASE("SNTP sync after shutdown posts nothing", "[go_wifi][sntp][shutdown]") {
   Fixture f(sntp_config());
   f.seed_network();

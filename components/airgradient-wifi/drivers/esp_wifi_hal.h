@@ -20,7 +20,8 @@
 /// Wraps esp_wifi_*, esp_netif_*, esp_netif_sntp_*, mdns_*, esp_timer_*. Translates the raw
 /// ESP-IDF event loop into typed callbacks.
 ///
-/// All callbacks fire from the ESP-IDF system event loop task context.
+/// Callbacks fire from the ESP-IDF system event loop task context, except
+/// on_time_synced, which fires from the network stack (LwIP tcpip) task.
 class EspWifiHal : public WifiHal {
 public:
   EspWifiHal();

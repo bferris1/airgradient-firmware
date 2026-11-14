@@ -60,6 +60,7 @@ WifiService::~WifiService() {
     _provisioning_active = false;
   }
   stop_local_endpoint();
+  _wifi.stop_sntp(); // before detaching, so no sync callback can race it
   _detach_wifi_callbacks();
   delete _prov;
 }
@@ -482,7 +483,12 @@ void WifiService::tick(uint32_t now_ms) {
 void WifiService::_install_wifi_callbacks() {
   _wifi.set_on_got_ip([this](uint32_t ip) { _on_got_ip(ip); });
   _wifi.set_on_disconnected([this](WifiDisconnectReason r) { _on_disconnected(r); });
-  _wifi.set_on_time_synced([this](int64_t epoch_s) { _on_time_synced(epoch_s); });
+  // The sync callback fires on the network stack task. While SNTP runs the
+  // slot is already ours (nothing else clears it), so leave it untouched
+  // rather than reassign it under a possible concurrent call.
+  if (!_wifi.is_sntp_running()) {
+    _wifi.set_on_time_synced([this](int64_t epoch_s) { _on_time_synced(epoch_s); });
+  }
 }
 
 void WifiService::_detach_wifi_callbacks() {

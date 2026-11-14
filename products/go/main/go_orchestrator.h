@@ -348,6 +348,11 @@ private:
   void on_bms_status_timer();
   void update_usb_auto_mode();
   void apply_usb_auto_mode(OperatingMode target);
+  /// Device-menu mode pick (UIAction::ChangeMode).
+  void on_mode_chosen(OperatingMode mode);
+  /// Manual Stationary pick during an automatic Stationary: persist it and
+  /// hand the mode back to the user.
+  void claim_usb_auto_stationary();
   void on_inactivity_timeout();
   void reschedule_sensor_timer(const GoSettings &previous_settings);
 

@@ -442,7 +442,7 @@ queue. All events are consumed by `Orchestrator::dispatch()`.
 | `WifiConnected` | `uint32_t wifi_ip` (network byte order) | `_on_got_ip()` after a successful STA association outside provisioning |
 | `WifiDisconnected` | `uint8_t wifi_disconnect_reason` (`WifiDisconnectReason`) | `_on_disconnected()` for every reason except `requested_by_user`, plus synthetic `connection_lost` from `tick()` on deadline expiry and synthetic `no_ap_found` / `unknown` on connect rejection |
 | `ProvisioningStateChanged` | `ProvisioningEventPayload prov` | `_on_provisioning_event()` for every `ProvisioningEvent`, minus the swallowed mid-switch `Stopped` |
-| `ClockSynced` | `int64_t clock_epoch_s` (UTC) | `_on_time_synced()` after SNTP sets the clock; non-blocking send from the network stack task, dropped with a warning if the queue is full |
+| `ClockSynced` | `int64_t clock_epoch_s` (UTC) | `_on_time_synced()` after SNTP sets the clock; non-blocking send from the network stack task, dropped with a warning if the queue is full. The callback slot is not reassigned while SNTP runs |
 
 `ProvisioningEventPayload` (`products/go/main/go_wifi_types.h`)
 carries `disable_cloud` and `static_ip` inline so the orchestrator can

@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "rev": "f1ac35e",
+  "rev": "e745f3e",
   "product": {
     "slug": "airgradient-go",
     "name": "AirGradient Go",
@@ -2621,7 +2621,11 @@
           "expected_result": "Within 15 seconds of stopping, Go switches to Stationary and connects to Wi-Fi."
         },
         {
-          "action": "Disconnect USB and wait 15 seconds. Select Main Menu > Operating Mode > Stationary, wait until Home shows the Wi-Fi icon, then connect USB for 15 seconds and disconnect it again. Watch Go for 30 seconds.",
+          "action": "With USB still connected, select Main Menu > Operating Mode > Stationary and return Home. Disconnect USB and watch Go for 30 seconds.",
+          "expected_result": "Go stays in Stationary with the Wi-Fi icon, because choosing Stationary in the menu made it a manual choice."
+        },
+        {
+          "action": "Connect USB for 15 seconds and disconnect it again. Watch Go for 30 seconds.",
           "expected_result": "Go stays in Stationary after USB is disconnected, because Stationary was chosen manually."
         }
       ],

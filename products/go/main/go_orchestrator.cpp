@@ -668,6 +668,9 @@ void Orchestrator::on_bms_timer() {
     shutdown(_latest_power.ship_mode_request);
     return; // system is shutting down — skip further processing
   }
+  // The full poll replaces this cycle's status poll, so it feeds the USB
+  // decision too (a failed charger read leaves Unknown, which is skipped).
+  update_usb_auto_mode();
 
   // Steady-state Status refresh (value only; urgent transitions push via notify_tracking_status()).
   if (_svc.ble_service.is_initialized()) {
@@ -678,7 +681,8 @@ void Orchestrator::on_bms_timer() {
 
 void Orchestrator::on_bms_status_timer() {
   BmsStatus status{};
-  if (_svc.power_service.poll_status(status)) {
+  const bool status_ok = _svc.power_service.poll_status(status);
+  if (status_ok) {
     bool was_charging = is_bms_charging(_latest_power.charging_status);
     const BmsPowerSource previous_power_source = _latest_power.charger_status.power_source;
     _latest_power.charging_status = status.charging_state;
@@ -707,7 +711,11 @@ void Orchestrator::on_bms_status_timer() {
   }
 
   _last_bms_status_poll_ms = static_cast<uint32_t>(RTOS::get_time_ms());
-  update_usb_auto_mode();
+  // Only a fresh reading may advance the debounce; a failed poll leaves the
+  // previous sample cached, and counting it again would fake a second sample.
+  if (status_ok) {
+    update_usb_auto_mode();
+  }
 }
 
 void Orchestrator::update_usb_auto_mode() {
@@ -747,6 +755,30 @@ void Orchestrator::update_usb_auto_mode() {
   if (action == UsbAutoModeAction::EnterStationary && _mode != OperatingMode::Stationary) {
     _usb_auto_mode.on_enter_failed();
   }
+}
+
+void Orchestrator::on_mode_chosen(OperatingMode mode) {
+  // Re-picking the automatic Stationary is a manual choice, not a no-op.
+  if (mode == OperatingMode::Stationary && _mode == OperatingMode::Stationary &&
+      _usb_auto_mode.auto_active()) {
+    claim_usb_auto_stationary();
+    return;
+  }
+  change_mode(mode);
+}
+
+void Orchestrator::claim_usb_auto_stationary() {
+  // The user picked Stationary while it was entered automatically: save it
+  // and stop managing the mode, so an unplug keeps Stationary.
+  GoSettings to_save = _settings;
+  to_save.operating_mode = OperatingMode::Stationary;
+  if (!save_go_settings(_config_store, to_save)) {
+    AG_LOGW(TAG, "usb auto mode: saving manual Stationary failed; staying automatic");
+    return;
+  }
+  AG_LOGI(TAG, "usb auto mode: Stationary chosen manually; automatic return cancelled");
+  _usb_auto_mode.on_manual_mode_change();
+  publish_local_snapshots();
 }
 
 void Orchestrator::apply_usb_auto_mode(OperatingMode target) {
@@ -1550,7 +1582,7 @@ void Orchestrator::on_input(const InputEventData &input) {
     stop_tracking();
     break;
   case UIAction::ChangeMode:
-    change_mode(result.new_mode);
+    on_mode_chosen(result.new_mode);
     break;
   case UIAction::SettingsChanged:
     apply_settings_change();

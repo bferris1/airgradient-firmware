@@ -198,7 +198,8 @@ The client sets the system clock itself on every successful sync, then the
 `set_on_time_synced()` callback receives the new UTC epoch in seconds. It
 re-syncs every `CONFIG_LWIP_SNTP_UPDATE_DELAY` and keeps running across STA
 reconnects. The callback fires from the network stack task, not the system
-event loop, so it must not block.
+event loop, so it must not block. Set it before `start_sntp()` and do not
+reassign it while `is_sntp_running()`; the slot is not synchronized.
 
 ## Configuration
 

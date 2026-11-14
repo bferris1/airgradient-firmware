@@ -665,6 +665,8 @@ public:
   static void shutdown(Orchestrator &o) { o.shutdown(); }
   static void shutdown(Orchestrator &o, ShipModeRequest reason) { o.shutdown(reason); }
   static void on_bms_status_timer(Orchestrator &o) { o.on_bms_status_timer(); }
+  static void on_bms_timer(Orchestrator &o) { o.on_bms_timer(); }
+  static void on_mode_chosen(Orchestrator &o, OperatingMode m) { o.on_mode_chosen(m); }
   static void apply_settings_change(Orchestrator &o) { o.apply_settings_change(); }
   static void apply_config_update(Orchestrator &o, const GoConfigUpdate &update) {
     o.apply_config_update(update, GoConfigSource::Ui);
@@ -13546,4 +13548,87 @@ TEST_CASE("USB auto mode: saved networks are only read when a switch is possible
   f.poll(orch, BmsPowerSource::UsbDcp);
   f.poll(orch, BmsPowerSource::UsbDcp);
   CHECK(test_spy::wifi_has_saved_networks_calls > 0);
+}
+
+TEST_CASE("USB auto mode: a failed charger poll does not count as a sample",
+          "[Orchestrator][usb_auto_mode]") {
+  UsbAutoFixture f;
+  auto orch = f.make_orchestrator();
+  CP2_ALLOW_CONFIG_WRITES(f);
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  REQUIRE(A::usb_auto_active(orch));
+
+  f.poll(orch, BmsPowerSource::None); // one battery sample: debounce pending
+  f.stub_bms.status_ok = false;       // the next read fails; cached None stays
+  A::on_bms_status_timer(orch);
+  A::on_bms_status_timer(orch);
+  CHECK(A::mode(orch) == OperatingMode::Stationary);
+  CHECK(A::usb_auto_active(orch));
+
+  f.stub_bms.status_ok = true;
+  f.poll(orch, BmsPowerSource::None);
+  CHECK(A::mode(orch) == OperatingMode::Portable);
+}
+
+TEST_CASE("USB auto mode: the full battery poll feeds the decision",
+          "[Orchestrator][usb_auto_mode]") {
+  UsbAutoFixture f;
+  auto orch = f.make_orchestrator();
+  CP2_ALLOW_CONFIG_WRITES(f);
+  f.poll(orch, BmsPowerSource::None);
+
+  // poll_bms() is stubbed here: it returns test_spy::snapshot_to_return.
+  test_spy::snapshot_to_return.charger_status.power_source = BmsPowerSource::UsbDcp;
+  A::on_bms_timer(orch);
+  CHECK(A::mode(orch) == OperatingMode::Portable); // debounce: one sample
+  A::on_bms_timer(orch);
+  CHECK(A::mode(orch) == OperatingMode::Stationary);
+
+  SECTION("a failed full poll is skipped") {
+    // A failed charger read leaves the snapshot's source Unknown.
+    test_spy::snapshot_to_return.charger_status.power_source = BmsPowerSource::Unknown;
+    A::on_bms_timer(orch);
+    A::on_bms_timer(orch);
+    A::on_bms_timer(orch);
+    CHECK(A::mode(orch) == OperatingMode::Stationary);
+    CHECK(A::usb_auto_active(orch));
+  }
+}
+
+TEST_CASE("USB auto mode: choosing Stationary from the menu keeps it on unplug",
+          "[Orchestrator][usb_auto_mode]") {
+  UsbAutoFixture f;
+  auto orch = f.make_orchestrator();
+  CP2_ALLOW_CONFIG_WRITES(f);
+  f.poll(orch, BmsPowerSource::UsbDcp);
+  REQUIRE(A::usb_auto_active(orch));
+
+  int saved_mode = -1;
+  ALLOW_CALL(f.mock_config, set_int(trompeloeil::_, trompeloeil::_))
+      .WITH(std::string(_1) == "opm")
+      .LR_SIDE_EFFECT(saved_mode = _2)
+      .RETURN(ConfigStoreResult::OK);
+
+  SECTION("saved") {
+    A::on_mode_chosen(orch, OperatingMode::Stationary);
+    CHECK(saved_mode == static_cast<int>(OperatingMode::Stationary));
+    CHECK_FALSE(A::usb_auto_active(orch));
+
+    f.poll(orch, BmsPowerSource::None);
+    f.poll(orch, BmsPowerSource::None);
+    CHECK(A::mode(orch) == OperatingMode::Stationary);
+  }
+  SECTION("save fails: stays automatic") {
+    ALLOW_CALL(f.mock_config, commit()).RETURN(ConfigStoreResult::ERROR);
+    A::on_mode_chosen(orch, OperatingMode::Stationary);
+    CHECK(A::usb_auto_active(orch));
+
+    f.poll(orch, BmsPowerSource::None);
+    f.poll(orch, BmsPowerSource::None);
+    CHECK(A::mode(orch) == OperatingMode::Portable);
+  }
+  SECTION("choosing Portable still switches") {
+    A::on_mode_chosen(orch, OperatingMode::Portable);
+    CHECK(A::mode(orch) == OperatingMode::Portable);
+  }
 }

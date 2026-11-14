@@ -576,13 +576,16 @@ the leave handler only runs when the loop is not blocked. See
 
 When Dock Mode (`GoSettings::auto_mode_on_usb`) is on, plugging in USB switches
 Portable to Stationary and unplugging switches back. `update_usb_auto_mode()`
-runs after every charger status poll (`BMS_STATUS_POLL_INTERVAL_MS`, 5 s) and applies the
-decision from `UsbAutoMode` (`go_usb_auto_mode.h`):
+runs after every successful charger status poll (`BMS_STATUS_POLL_INTERVAL_MS`,
+5 s) and after every full battery poll, which replaces that cycle's status poll.
+It applies the decision from `UsbAutoMode` (`go_usb_auto_mode.h`):
 
 - A power change must hold for two consecutive polls, so a brief rail drop on
   unplug does not flip the mode. Booting on USB, or turning the setting on while
-  plugged in, counts as a plug-in. A poll with an unknown power source (failed
-  charger read) is skipped, so read errors never look like an unplug.
+  plugged in, counts as a plug-in. A failed status poll is skipped rather than
+  reusing the cached reading, and a full poll with an unknown power source
+  (failed charger read) is skipped too, so read errors never look like an
+  unplug.
 - The switch to Stationary waits while a route is tracked or paused, a BLE
   client is connected, no Wi-Fi network is saved, onboarding is incomplete, a
   hardware test screen is open, or a setup session, boot splash, or
@@ -596,6 +599,9 @@ decision from `UsbAutoMode` (`go_usb_auto_mode.h`):
 - Any other mode change (device menu, BLE, local API, or cloud) hands control
   back to the user until the next plug-in, once the change is saved. A rejected
   save leaves the automatic switch in charge.
+- Choosing Stationary in the device menu during an automatic Stationary
+  (`on_mode_chosen()`) saves Stationary and hands control back, so an unplug
+  keeps Stationary. If that save fails, the switch stays automatic.
 
 The automatic mode change is not persisted. While it is active,
 `activate_settings_candidate()` saves `Portable` as the stored mode, so other
